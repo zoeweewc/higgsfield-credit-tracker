@@ -457,11 +457,33 @@ def cmd_backfill(cfg, p, a):
     match_charges(cfg, p, charges)
 
 
+def find_shared_folder():
+    """Look for the team's shared 'Higgsfield Credits' folder in any signed-in Drive account."""
+    import glob
+    hits = []
+    for pattern in ("Library/CloudStorage/GoogleDrive-*/My Drive/Higgsfield Credits",
+                    "Library/CloudStorage/GoogleDrive-*/Shared drives/*/Higgsfield Credits",
+                    "Google Drive/My Drive/Higgsfield Credits"):
+        hits += glob.glob(os.path.join(HOME, pattern))
+    return sorted(set(hits))
+
+
 def cmd_setup(cfg, p, a):
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-    cfg["user"] = a.user or cfg["user"]
+    cfg["user"] = (a.user or cfg["user"]).strip().lower().split()[0]
     if a.ledger_dir:
-        cfg["ledger_dir"] = a.ledger_dir
+        cfg["ledger_dir"] = os.path.expanduser(a.ledger_dir)
+    elif cfg["ledger_dir"] == DEFAULT_LEDGER_DIR:
+        found = find_shared_folder()
+        if len(found) == 1:
+            cfg["ledger_dir"] = found[0]
+        elif len(found) > 1:
+            sys.exit("Found more than one shared folder. Re-run with --ledger-dir \"<the right one>\":\n  "
+                     + "\n  ".join(found))
+        else:
+            sys.exit("Can't find the team's shared 'Higgsfield Credits' folder in Google Drive.\n"
+                     "Make sure the folder has been shared with you and Google Drive for desktop has\n"
+                     "finished syncing, then run this again. Or pass --ledger-dir \"<path to it>\".")
     json.dump(cfg, open(CONFIG_PATH, "w"), indent=2)
     p = paths(cfg)
     if not os.path.exists(p["projects"]):

@@ -20,16 +20,15 @@ In Claude Code, run:
 /plugin install higgsfield-credits@funnelduo-tools
 ```
 
-Then tell it your name and where the shared records folder is. This also reads your own past
-chats from the start of this month, so your existing spend is already in there:
+Then tell it your first name. It finds the team's shared Drive folder by itself, and reads your
+own past chats from the start of this month so your existing spend is already in there:
 
 ```bash
-python3 ~/.claude/plugins/cache/higgsfield-credit-tracker/higgsfield-credits/*/scripts/hf_credits.py setup --user zoe --ledger-dir "/Users/<you>/Library/CloudStorage/GoogleDrive-<you>@funnelduo.com/My Drive/Higgsfield Credits"
+python3 ~/.claude/plugins/cache/*/higgsfield-credits/*/scripts/hf_credits.py setup --user <your first name>
 ```
 
-- `--user` — your first name, lowercase. It names your records file.
-- `--ledger-dir` — the shared Google Drive folder everyone's records go into. Must be the same
-  shared folder for the whole team, synced by Google Drive for desktop.
+If it can't find the shared folder, the folder hasn't been shared with you yet, or Google Drive
+for desktop hasn't finished syncing. Wait for it, then run the line again.
 
 Restart Claude Code. That's the whole setup.
 

@@ -1,0 +1,16 @@
+{
+  "name": "funnelduo-tools",
+  "description": "FunnelDuo internal Claude Code plugins.",
+  "version": "1.0.0",
+  "owner": { "name": "FunnelDuo", "url": "https://github.com/zoeweewc" },
+  "plugins": [
+    {
+      "name": "higgsfield-credits",
+      "source": "./plugins/higgsfield-credits",
+      "description": "Automatically records Higgsfield credit spend per project, for every person on the team.",
+      "category": "productivity",
+      "keywords": ["higgsfield", "credits", "budget", "video"],
+      "license": "MIT"
+    }
+  ]
+}

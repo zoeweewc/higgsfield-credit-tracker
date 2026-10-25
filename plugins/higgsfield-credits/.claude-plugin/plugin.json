@@ -1,0 +1,9 @@
+{
+  "name": "higgsfield-credits",
+  "displayName": "Higgsfield Credit Tracker",
+  "description": "Records every Higgsfield generation made through Claude: how many credits it cost and which project it belongs to, based on the folder. Monthly totals per project and per person.",
+  "version": "1.0.0",
+  "author": { "name": "FunnelDuo" },
+  "license": "MIT",
+  "keywords": ["higgsfield", "credits", "budget", "tracking", "video"]
+}

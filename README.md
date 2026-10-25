@@ -20,7 +20,8 @@ In Claude Code, run:
 /plugin install higgsfield-credits@funnelduo-tools
 ```
 
-Then tell it your name and where the shared records folder is:
+Then tell it your name and where the shared records folder is. This also reads your own past
+chats from the start of this month, so your existing spend is already in there:
 
 ```bash
 python3 ~/.claude/plugins/cache/higgsfield-credit-tracker/higgsfield-credits/*/scripts/hf_credits.py setup --user zoe --ledger-dir "/Users/<you>/Library/CloudStorage/GoogleDrive-<you>@funnelduo.com/My Drive/Higgsfield Credits"
@@ -57,6 +58,9 @@ Google Sheets and look down the Project column. If two folders should be the sam
 Claude: *"the folders X and Y are both the Rawson project"*. It re-labels everything from those
 folders, past included.
 
+**Nobody needs to update a spreadsheet.** `Higgsfield Credits.xlsx` in the shared folder rebuilds
+itself every time anyone's chat ends, with a tab per person and a summary of every month.
+
 **The manager**, once everyone has done that: ask Claude for the team report. It reads every
 `ledger-*.csv` in the shared folder and produces the month by project and by person, plus a `summary-YYYY-MM.csv` ready for the team Google Sheet.
 
@@ -69,7 +73,8 @@ folders, past included.
 | `ledger-<name>.csv` | One person's charges: date, model, credits, action, folder, chat, person |
 | `projects.csv` | Folder → project, shared by everyone, so names stay consistent |
 | `calls/` | Raw log of each generation, used to match charges. Leave it alone. |
-| `summary-YYYY-MM.csv` | The monthly compile for the Google Sheet |
+| `Higgsfield Credits.xlsx` | **The one spreadsheet** — rebuilt automatically after every chat. Tabs: Summary, By project, and one per person. Open it straight from Drive. |
+| `summary-YYYY-MM.csv` | Optional flat export, if you want one |
 
 The ledger stores the **folder**, never the project name. That's why renaming a project instantly
 re-labels every past charge.

@@ -205,7 +205,11 @@ def write_ledger(p, rows):
 
 
 def cmd_sync(cfg, p, a):
-    charges = transactions_from_transcript(a.transcript)
+    match_charges(cfg, p, transactions_from_transcript(a.transcript))
+
+
+def match_charges(cfg, p, charges):
+    """Attach each charge to the generation that caused it, then save."""
     calls = read_calls(p)
     ledger = load_ledger(p)
     seen = {(r["created_at"], r["model"], r["action"]) for r in ledger}
@@ -258,9 +262,62 @@ def cmd_sync(cfg, p, a):
     still = [c for c in calls if not c.get("priced")]
     if still:
         print(f"\n{len(still)} generation(s) still unpriced - fetch more `transactions` pages and sync again.")
+    build_workbook(p)
 
 
 # ---------------------------------------------------------------- projects / reports
+
+def build_workbook(p):
+    """Rewrite the single shared spreadsheet: Summary tab + one tab per person."""
+    try:
+        import xlsx
+    except ImportError:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import xlsx
+    projects = load_projects(p)
+    rows = rows_for(p, user_files=True)
+    for r in rows:
+        r["_project"] = project_of(r["folder"], projects)
+        r["_month"] = f"{local(ts(r['created_at'])):%Y-%m}"
+    months = sorted({r["_month"] for r in rows})
+    people = sorted({r["user"] for r in rows})
+
+    summary = [["Month", "Person", "Project", "Credits"]]
+    agg = defaultdict(float)
+    for r in rows:
+        agg[(r["_month"], r["user"], r["_project"])] += float(r["credits"])
+    for (m, who, proj), v in sorted(agg.items(), key=lambda kv: (kv[0][0], -kv[1])):
+        summary.append([m, who, "(needs project)" if proj == "?" else proj, round(v, 2)])
+    summary += [[], ["Month totals"]]
+    for m in months:
+        summary.append([m, "", "", round(sum(v for k, v in agg.items() if k[0] == m), 2)])
+
+    by_project = [["Project"] + months + ["Total"]]
+    names = sorted({r["_project"] for r in rows}, key=lambda n: -sum(
+        float(r["credits"]) for r in rows if r["_project"] == n))
+    for n in names:
+        line = [("(needs project)" if n == "?" else n)]
+        for m in months:
+            line.append(round(sum(float(r["credits"]) for r in rows if r["_project"] == n and r["_month"] == m), 2))
+        line.append(round(sum(float(r["credits"]) for r in rows if r["_project"] == n), 2))
+        by_project.append(line)
+
+    sheets = [("Summary", summary), ("By project", by_project)]
+    for who in people:
+        tab = [["Date", "Model", "Credits", "Project", "Folder"]]
+        for r in sorted((r for r in rows if r["user"] == who), key=lambda r: r["created_at"], reverse=True):
+            tab.append([f"{local(ts(r['created_at'])):%Y-%m-%d %H:%M}", r["model"], round(float(r["credits"]), 2),
+                        "(needs project)" if r["_project"] == "?" else r["_project"], r["folder"]])
+        sheets.append((who, tab))
+
+    out = os.path.join(p["dir"], "Higgsfield Credits.xlsx")
+    try:
+        xlsx.write(out, sheets)
+    except OSError as e:  # the file may be open, or Drive may be mid-sync
+        print(f"(could not update the spreadsheet right now: {e})")
+        return
+    print(f"Spreadsheet updated: {out}")
+
 
 def cmd_project(cfg, p, a):
     rows = [r for r in load_projects(p) if r[0] != a.folder]
@@ -334,6 +391,72 @@ def cmd_report(cfg, p, a):
         print(f"\nSaved {out} - ready to paste into the team Google Sheet.")
 
 
+TRANSCRIPTS = os.path.join(HOME, ".claude", "projects")
+
+
+def cmd_backfill(cfg, p, a):
+    """On install: read this month's own Claude sessions and record what they spent.
+
+    Finds every Higgsfield generation in the local transcripts (with the folder it ran in)
+    and every `transactions` result Claude happened to fetch, then matches them.
+    """
+    import glob
+    since = ts((a.since or f"{local(now()):%Y-%m}-01") + "T00:00:00")
+    calls, charges = [], []
+    for fn in glob.glob(os.path.join(TRANSCRIPTS, "**", "*.jsonl"), recursive=True):
+        session_id = os.path.splitext(os.path.basename(fn))[0]
+        want = set()
+        for line in open(fn, errors="ignore"):
+            if '"tool_use"' not in line and '"tool_result"' not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            content = (d.get("message") or {}).get("content")
+            if not isinstance(content, list) or "timestamp" not in d:
+                continue
+            when = ts(d["timestamp"])
+            for b in content:
+                if not isinstance(b, dict):
+                    continue
+                if b.get("type") == "tool_use":
+                    name = b.get("name", "")
+                    if name.endswith("__transactions"):
+                        want.add(b.get("id"))
+                    elif SPEND_TOOL.search(name) and when >= since:
+                        calls.append({"at": d["timestamp"], "tool": name.split("__")[-1],
+                                      "models": re.findall(r'"model"\s*:\s*"([^"]+)"', json.dumps(b.get("input", {}))),
+                                      "folder": d.get("cwd", ""), "session_id": session_id,
+                                      "user": cfg["user"], "priced": False})
+                elif b.get("type") == "tool_result" and b.get("tool_use_id") in want:
+                    body = b.get("content")
+                    if isinstance(body, list):
+                        body = "".join(x.get("text", "") for x in body if isinstance(x, dict))
+                    try:
+                        charges += [t for t in json.loads(body).get("items", [])
+                                    if isinstance(t, dict) and {"created_at", "display_name", "credits", "action"} <= t.keys()]
+                    except (ValueError, AttributeError, TypeError):
+                        pass
+    # drop duplicates and anything older than the start of the month
+    seen_c = set()
+    charges = [t for t in charges
+               if ts(t["created_at"]) >= since
+               and not ((t["created_at"], t["display_name"], t["action"]) in seen_c
+                        or seen_c.add((t["created_at"], t["display_name"], t["action"])))]
+    by_session = defaultdict(list)
+    for c in calls:
+        by_session[c["session_id"]].append(c)
+    for sid, recs in by_session.items():
+        existing = {(r["at"], r["folder"]) for r in read_calls(p, sid)}
+        with open(call_file(p, sid), "a") as f:
+            for r in recs:
+                if (r["at"], r["folder"]) not in existing:
+                    f.write(json.dumps(r) + "\n")
+    print(f"Found {len(calls)} generation(s) and {len(charges)} charge(s) since {local(since):%d %b %Y}.")
+    match_charges(cfg, p, charges)
+
+
 def cmd_setup(cfg, p, a):
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     cfg["user"] = a.user or cfg["user"]
@@ -343,7 +466,10 @@ def cmd_setup(cfg, p, a):
     p = paths(cfg)
     if not os.path.exists(p["projects"]):
         save_projects(p, [])
-    print(f"Name: {cfg['user']}\nRecords folder: {cfg['ledger_dir']}\nConfig: {CONFIG_PATH}")
+    print(f"Name: {cfg['user']}\nRecords folder: {cfg['ledger_dir']}\nConfig: {CONFIG_PATH}\n")
+    if not a.no_backfill:
+        print("Reading this month's past chats...")
+        cmd_backfill(cfg, p, argparse.Namespace(since=None))
 
 
 def main():
@@ -356,6 +482,9 @@ def main():
     s = sub.add_parser("report")
     s.add_argument("--month"); s.add_argument("--team", action="store_true"); s.add_argument("--csv", action="store_true")
     s = sub.add_parser("setup"); s.add_argument("--user"); s.add_argument("--ledger-dir")
+    s.add_argument("--no-backfill", action="store_true")
+    s = sub.add_parser("backfill"); s.add_argument("--since", help="YYYY-MM-DD, default the 1st of this month")
+    sub.add_parser("workbook")
     a = ap.parse_args()
 
     cfg = load_config()
@@ -372,6 +501,10 @@ def main():
         cmd_report(cfg, p, a)
     elif a.cmd == "setup":
         cmd_setup(cfg, p, a)
+    elif a.cmd == "backfill":
+        cmd_backfill(cfg, p, a)
+    elif a.cmd == "workbook":
+        build_workbook(p)
 
 
 if __name__ == "__main__":

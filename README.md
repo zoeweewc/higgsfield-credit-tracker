@@ -20,7 +20,8 @@ In Claude Code, run:
 /plugin install higgsfield-credits@funnelduo-tools
 ```
 
-Then tell it your first name. It finds the team's shared Drive folder by itself, and reads your
+Then tell it your first name. It finds the team's shared Drive folder by itself
+(`My Drive / Zoe Claude / Higgsfield Credits`, shared with you by Zoe), and reads your
 own past chats from the start of this month so your existing spend is already in there:
 
 ```bash
@@ -66,6 +67,8 @@ itself every time anyone's chat ends, with a tab per person and a summary of eve
 ---
 
 ## What's in the shared folder
+
+`My Drive / Zoe Claude / Higgsfield Credits`
 
 | File | What it is |
 |---|---|

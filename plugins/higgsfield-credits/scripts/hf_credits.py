@@ -462,8 +462,12 @@ def find_shared_folder():
     import glob
     hits = []
     for pattern in ("Library/CloudStorage/GoogleDrive-*/My Drive/Higgsfield Credits",
+                    "Library/CloudStorage/GoogleDrive-*/My Drive/*/Higgsfield Credits",
+                    "Library/CloudStorage/GoogleDrive-*/My Drive/*/*/Higgsfield Credits",
                     "Library/CloudStorage/GoogleDrive-*/Shared drives/*/Higgsfield Credits",
-                    "Google Drive/My Drive/Higgsfield Credits"):
+                    "Library/CloudStorage/GoogleDrive-*/Shared drives/*/*/Higgsfield Credits",
+                    "Google Drive/My Drive/Higgsfield Credits",
+                    "Google Drive/My Drive/*/Higgsfield Credits"):
         hits += glob.glob(os.path.join(HOME, pattern))
     return sorted(set(hits))
 

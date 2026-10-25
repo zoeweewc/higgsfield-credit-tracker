@@ -23,7 +23,6 @@ from datetime import datetime, timedelta, timezone
 HOME = os.path.expanduser("~")
 CONFIG_PATH = os.path.join(HOME, ".higgsfield-credits", "config.json")
 DEFAULT_LEDGER_DIR = os.path.join(HOME, "Higgsfield Credits")
-USD_PER_CREDIT = 81 / 2000  # 2,000 credits = USD 81
 LEDGER_FIELDS = ["created_at", "model", "credits", "action", "folder", "session_id", "session_title", "user"]
 
 # Tools that cost credits are matched by name; read-only tools never charge.
@@ -150,7 +149,7 @@ def cmd_hook_stop(cfg, p):
         f"Do this now, then finish:\n"
         f"1. Call the Higgsfield MCP `transactions` tool with size {min(100, len(pending) + 10)}.\n"
         f"2. Run: python3 \"{script}\" sync --transcript \"{event.get('transcript_path', '')}\"\n"
-        f"3. Tell the user one line: what this run cost in credits and USD, and which project.\n"
+        f"3. Tell the user one line: what this run cost in credits, and which project.\n"
         f"If sync reports a folder with no project, ask the user what project that folder is, "
         f"then run: python3 \"{script}\" project \"<folder path>\" \"<project name>\"")}))
 
@@ -246,7 +245,7 @@ def cmd_sync(cfg, p, a):
                 f.write(json.dumps(r) + "\n")
 
     total = sum(float(r["credits"]) for r in added)
-    print(f"Recorded {len(added)} charge(s): {total:,.2f} credits (USD {total * USD_PER_CREDIT:,.2f})")
+    print(f"Recorded {len(added)} charge(s): {total:,.2f} credits")
     projects = load_projects(p)
     unknown = defaultdict(float)
     for r in ledger + added:
@@ -297,11 +296,11 @@ def table(title, rows, key_name, projects):
         agg[r["_key"]] += float(r["credits"])
     total = sum(agg.values())
     print(f"{title}\n")
-    print(f"| {key_name} | Credits | USD | Share |\n|---|---:|---:|---:|")
+    print(f"| {key_name} | Credits | Share |\n|---|---:|---:|")
     for k, v in sorted(agg.items(), key=lambda kv: -kv[1]):
         share = f"{v / total:.0%}" if total else "-"
-        print(f"| {k} | {v:,.2f} | ${v * USD_PER_CREDIT:,.2f} | {share} |")
-    print(f"| **Total** | **{total:,.2f}** | **${total * USD_PER_CREDIT:,.2f}** | |")
+        print(f"| {k} | {v:,.2f} | {share} |")
+    print(f"| **Total** | **{total:,.2f}** | |")
 
 
 def cmd_report(cfg, p, a):
@@ -329,9 +328,9 @@ def cmd_report(cfg, p, a):
             agg[(r["user"], r["_project"])] += float(r["credits"])
         with open(out, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["Month", "Person", "Project", "Credits", "USD"])
+            w.writerow(["Month", "Person", "Project", "Credits"])
             for (who, proj), v in sorted(agg.items(), key=lambda kv: -kv[1]):
-                w.writerow([month, who, proj, f"{v:.2f}", f"{v * USD_PER_CREDIT:.2f}"])
+                w.writerow([month, who, proj, f"{v:.2f}"])
         print(f"\nSaved {out} - ready to paste into the team Google Sheet.")
 
 

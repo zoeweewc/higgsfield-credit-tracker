@@ -40,7 +40,7 @@ Restart Claude Code. That's the whole setup.
 
 **When you finish a chat:** if that chat made any Higgsfield videos or images, Claude prices
 them before the chat can end, and tells you one line like
-`This run: 144 credits (USD 5.83) — Reeve`.
+`This run: 144 credits — Reeve`.
 
 **If you worked in a folder nobody has claimed yet,** Claude asks once: *"What project is this
 folder for?"* Answer in your own words — `Rawson`, `Nike launch`, anything. It's remembered for
@@ -58,8 +58,7 @@ Claude: *"the folders X and Y are both the Rawson project"*. It re-labels everyt
 folders, past included.
 
 **The manager**, once everyone has done that: ask Claude for the team report. It reads every
-`ledger-*.csv` in the shared folder and produces the month by project and by person, in credits
-and USD, plus a `summary-YYYY-MM.csv` ready for the team Google Sheet.
+`ledger-*.csv` in the shared folder and produces the month by project and by person, plus a `summary-YYYY-MM.csv` ready for the team Google Sheet.
 
 ---
 
@@ -87,10 +86,3 @@ re-labels every past charge.
 - Credits are only readable inside a Claude chat, which is why pricing happens at the end of a
   chat rather than silently in the background.
 
----
-
-## Prices
-
-2,000 credits = USD 81, so 1 credit = USD 0.0405. If Higgsfield changes its pricing, edit
-`USD_PER_CREDIT` in `plugins/higgsfield-credits/scripts/hf_credits.py` and push the change —
-everyone gets it on their next plugin update.

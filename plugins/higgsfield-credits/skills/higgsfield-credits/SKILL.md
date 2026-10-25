@@ -5,12 +5,10 @@ description: Record and report Higgsfield credit spend per project. Use whenever
 
 # Higgsfield credit tracking
 
-Every Higgsfield generation made through Claude is recorded: credits, USD, and the project
-it belongs to. **The folder decides the project** — all credits spent in a chat belong to the
+Every Higgsfield generation made through Claude is recorded: how many credits it cost and the
+project it belongs to. Report credits only — never convert to money unless asked. **The folder decides the project** — all credits spent in a chat belong to the
 project of the folder that chat is running in, including subfolders. Never tag spend by topic,
 by what you were talking about, or per chat.
-
-**Pricing: 2,000 credits = USD 81** (1 credit = USD 0.0405). Always report credits *and* USD.
 
 The script is at `${CLAUDE_PLUGIN_ROOT}/scripts/hf_credits.py`. Run it with `python3`.
 
@@ -23,7 +21,7 @@ the chat, so you must fetch it:
 2. Run `python3 <script> sync --transcript "<this chat's transcript path>"`.
    The Stop hook gives you the transcript path; if you don't have it, run `sync` with no
    `--transcript` and fetch `transactions` again in the same chat.
-3. Tell the user one line, e.g. `This run: 144 credits (USD 5.83) — Reeve`.
+3. Tell the user one line, e.g. `This run: 144 credits — Reeve`.
 
 If `sync` prints **NEEDS PROJECT**, a folder has no project yet:
 - Ask the user plainly: *"What project is `<folder>` for?"* Show the credits involved.
@@ -40,7 +38,7 @@ If `sync` says generations are still unpriced, fetch the next `transactions` pag
 - Whole team (reads every `ledger-*.csv` in the shared folder): `report --team`
 - Also write a spreadsheet file for the Google Sheet: add `--csv`
 
-Give the table in chat with credits and USD, plus one line on what stands out. Don't save
+Give the table in chat, plus one line on what stands out. Don't save
 reports as files unless asked.
 
 ## Renaming or merging projects

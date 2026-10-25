@@ -263,6 +263,7 @@ def match_charges(cfg, p, charges):
     if still:
         print(f"\n{len(still)} generation(s) still unpriced - fetch more `transactions` pages and sync again.")
     build_workbook(p)
+    prune_calls(p)
 
 
 # ---------------------------------------------------------------- projects / reports
@@ -317,6 +318,33 @@ def build_workbook(p):
         print(f"(could not update the spreadsheet right now: {e})")
         return
     print(f"Spreadsheet updated: {out}")
+
+
+def prune_calls(p, days=60):
+    """Drop call records that are priced and older than `days` - refunds land long before that."""
+    cutoff = now() - timedelta(days=days)
+    removed = 0
+    for name in os.listdir(p["calls"]):
+        if not name.endswith(".jsonl"):
+            continue
+        fn = os.path.join(p["calls"], name)
+        keep = []
+        for line in open(fn, errors="ignore"):
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if rec.get("priced") and ts(rec["at"]) < cutoff:
+                removed += 1
+            else:
+                keep.append(line.rstrip("\n"))
+        if keep:
+            with open(fn, "w") as out:
+                out.write("\n".join(keep) + "\n")
+        else:
+            os.remove(fn)
+    if removed:
+        print(f"(tidied up {removed} finished call record(s) older than {days} days)")
 
 
 def cmd_project(cfg, p, a):

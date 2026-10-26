@@ -293,6 +293,55 @@ def match_charges(cfg, p, charges):
 
 # ---------------------------------------------------------------- projects / reports
 
+VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm")
+SKIP_DIRS = ("archive", "archieve", "old", "draft", "wip", "raw")
+
+
+def count_finished_ads(p, projects, rows):
+    """How many finished ads were delivered, per project per month.
+
+    A finished ad = one video file sitting in a folder whose name contains "final"
+    (e.g. `Ads/Final Ads`, `Ad Production/Ads/Final`), inside that project's folder.
+    Counted by the month the file was last changed. Archive/draft subfolders are skipped.
+    """
+    import glob
+    roots = defaultdict(set)
+    for r in rows:
+        folder = r["folder"]
+        proj = project_of(folder, projects)
+        if proj == "?":
+            continue
+        for needle, name in projects:
+            if needle in folder and name == proj:
+                root = folder[:folder.index(needle) + len(needle)]
+                roots[proj].add(root)
+                break
+    counts = defaultdict(int)
+    for proj, dirs in roots.items():
+        seen = set()
+        for root in sorted(dirs):
+            if not os.path.isdir(root):
+                continue
+            for final_dir in glob.glob(os.path.join(root, "**", "*[Ff]inal*"), recursive=True):
+                if not os.path.isdir(final_dir):
+                    continue
+                for dirpath, dirnames, files in os.walk(final_dir):
+                    dirnames[:] = [d for d in dirnames if d.lower() not in SKIP_DIRS]
+                    for name in files:
+                        if not name.lower().endswith(VIDEO_EXT):
+                            continue
+                        full = os.path.join(dirpath, name)
+                        if full in seen:
+                            continue
+                        seen.add(full)
+                        try:
+                            when = datetime.fromtimestamp(os.path.getmtime(full))
+                        except OSError:
+                            continue
+                        counts[(f"{when:%Y-%m}", proj)] += 1
+    return counts
+
+
 def build_workbook(p):
     """Rewrite the single shared spreadsheet: Summary tab + one tab per person."""
     try:
@@ -308,7 +357,8 @@ def build_workbook(p):
     months = sorted({r["_month"] for r in rows})
     people = sorted({r["user"] for r in rows})
 
-    summary = [["Month", "Person", "Project", "Credits", "Videos", "Images"]]
+    ads = count_finished_ads(p, projects, rows)
+    summary = [["Month", "Person", "Project", "Credits", "Clips made", "Images made"]]
     agg = defaultdict(float)
     made = defaultdict(lambda: [0, 0])
     for r in rows:
@@ -323,11 +373,16 @@ def build_workbook(p):
         m, who, proj = key
         summary.append([m, who, "(needs project)" if proj == "?" else proj, round(v, 2),
                         made[key][0], made[key][1]])
-    summary += [[], ["Month totals"]]
+    summary += [[], ["Finished ads delivered (files in each project's Final folder)"],
+                ["Month", "Project", "Finished ads"]]
+    for (m, proj), n in sorted(ads.items()):
+        summary.append([m, proj, n])
+    summary += [[], ["Month totals"], ["Month", "", "", "Credits", "Clips", "Images", "Finished ads"]]
     for m in months:
         keys = [k for k in agg if k[0] == m]
         summary.append([m, "", "", round(sum(agg[k] for k in keys), 2),
-                        sum(made[k][0] for k in keys), sum(made[k][1] for k in keys)])
+                        sum(made[k][0] for k in keys), sum(made[k][1] for k in keys),
+                        sum(n for (mm, _), n in ads.items() if mm == m)])
 
     by_project = [["Project"] + months + ["Total"]]
     names = sorted({r["_project"] for r in rows}, key=lambda n: -sum(
@@ -426,11 +481,16 @@ def table(title, rows, key_name, projects):
                 imgs[r["_key"]] += 1
     total = sum(agg.values())
     print(f"{title}\n")
-    print(f"| {key_name} | Credits | Videos | Images | Share |\n|---|---:|---:|---:|---:|")
+    finished = rows[0].get("_ads") if rows else None
+    head = " Finished ads |" if finished is not None else ""
+    print(f"| {key_name} | Credits | Clips made | Images made |{head} Share |")
+    print("|---|---:|---:|---:|" + ("---:|" if finished is not None else "") + "---:|")
     for k, v in sorted(agg.items(), key=lambda kv: -kv[1]):
         share = f"{v / total:.0%}" if total else "-"
-        print(f"| {k} | {v:,.2f} | {vids[k]} | {imgs[k]} | {share} |")
-    print(f"| **Total** | **{total:,.2f}** | **{sum(vids.values())}** | **{sum(imgs.values())}** | |")
+        extra = f" {finished.get(k, 0)} |" if finished is not None else ""
+        print(f"| {k} | {v:,.2f} | {vids[k]} | {imgs[k]} |{extra} {share} |")
+    extra_tot = f" **{sum(finished.values())}** |" if finished is not None else ""
+    print(f"| **Total** | **{total:,.2f}** | **{sum(vids.values())}** | **{sum(imgs.values())}** |{extra_tot} |")
 
 
 def cmd_report(cfg, p, a):
@@ -443,13 +503,18 @@ def cmd_report(cfg, p, a):
     for r in rows:
         r["_project"] = project_of(r["folder"], projects)
     head = datetime.strptime(month, "%Y-%m").strftime("%B %Y")
+    ads = count_finished_ads(p, projects, rows)
+    by_proj_ads = {(pr if pr != "?" else "? (needs project)"): n
+                   for (m, pr), n in ads.items() if m == month}
     for r in rows:
         r["_key"] = r["_project"] if r["_project"] != "?" else "? (needs project)"
+        r["_ads"] = by_proj_ads
     table(f"Higgsfield spend by project - {head}" + (" - WHOLE TEAM" if a.team else ""), rows, "Project", projects)
     if a.team:
         print()
         for r in rows:
             r["_key"] = r["user"]
+            r.pop("_ads", None)
         table(f"Higgsfield spend by person - {head}", rows, "Person", projects)
     if a.csv:
         out = os.path.join(p["dir"], f"summary-{month}.csv")

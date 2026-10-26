@@ -75,11 +75,23 @@ itself every time anyone's chat ends, with a tab per person and a summary of eve
 | `ledger-<name>.csv` | One person's charges: date, model, credits, action, folder, chat, person |
 | `projects.csv` | Folder → project, shared by everyone, so names stay consistent |
 | `calls/` | Raw log of each generation, used to match a charge to its project. Cleans itself up after 60 days. Leave it alone. |
-| `Higgsfield Credits.xlsx` | **The one spreadsheet** — rebuilt automatically after every chat. Tabs: Summary (credits + how many videos and images), By project, and one per person. Open it straight from Drive. |
+| `Higgsfield Credits.xlsx` | **The one spreadsheet** — rebuilt automatically after every chat. Tabs: Summary (credits, clips made, and finished ads delivered), By project, and one per person. Open it straight from Drive. |
 | `summary-YYYY-MM.csv` | Optional flat export, if you want one |
 
 The ledger stores the **folder**, never the project name. That's why renaming a project instantly
 re-labels every past charge.
+
+---
+
+## How finished ads are counted
+
+A **finished ad** is one video file sitting in a folder whose name contains "final" inside that
+project — `Ads/Final Ads`, `Ad Production/Ads/Final`, and so on. Put the delivered cut there and
+it's counted; drafts and takes elsewhere are not. `Archive`, `Old`, `Draft`, `WIP` and `Raw`
+subfolders are skipped.
+
+"Clips made" is the raw count of generations, which is usually 20-40x higher. The gap between
+the two is what reruns and takes cost you.
 
 ---
 

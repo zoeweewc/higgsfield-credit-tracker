@@ -38,7 +38,8 @@ If `sync` says generations are still unpriced, fetch the next `transactions` pag
 - Whole team (reads every `ledger-*.csv` in the shared folder): `report --team`
 - Also write a spreadsheet file for the Google Sheet: add `--csv`
 
-The table shows credits plus how many videos and images were made (refunds excluded). Give it
+The table shows credits, how many clips and images were generated (refunds excluded), and how
+many **finished ads** were delivered - counted as video files in each project's `Final` folder. Give it
 in chat, plus one line on what stands out. Don't save
 reports as files unless asked.
 

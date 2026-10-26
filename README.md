@@ -75,11 +75,30 @@ itself every time anyone's chat ends, with a tab per person and a summary of eve
 | `ledger-<name>.csv` | One person's charges: date, model, credits, action, folder, chat, person |
 | `projects.csv` | Folder → project, shared by everyone, so names stay consistent |
 | `calls/` | Raw log of each generation, used to match a charge to its project. Cleans itself up after 60 days. Leave it alone. |
-| `Higgsfield Credits.xlsx` | **The one spreadsheet** — rebuilt automatically after every chat. Tabs: Summary, By project, and one per person. Open it straight from Drive. |
+| `Higgsfield Credits.xlsx` | **The one spreadsheet** — rebuilt automatically after every chat. Tabs: Summary (credits + how many videos and images), By project, and one per person. Open it straight from Drive. |
 | `summary-YYYY-MM.csv` | Optional flat export, if you want one |
 
 The ledger stores the **folder**, never the project name. That's why renaming a project instantly
 re-labels every past charge.
+
+---
+
+## Updating it later
+
+Plugin updates are not automatic. When the tracker changes, each person runs:
+
+```
+/plugin marketplace update funnelduo-tools
+```
+
+```
+/plugin update higgsfield-credits
+```
+
+and restarts Claude Code.
+
+**Project names are the exception** — they live in `projects.csv` in the shared Drive folder, so
+renaming or merging projects reaches everyone straight away with no update needed.
 
 ---
 

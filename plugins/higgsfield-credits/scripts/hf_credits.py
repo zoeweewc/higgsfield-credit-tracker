@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 HOME = os.path.expanduser("~")
 CONFIG_PATH = os.path.join(HOME, ".higgsfield-credits", "config.json")
 DEFAULT_LEDGER_DIR = os.path.join(HOME, "Higgsfield Credits")
-LEDGER_FIELDS = ["created_at", "model", "credits", "action", "folder", "session_id", "session_title", "user"]
+LEDGER_FIELDS = ["created_at", "model", "credits", "action", "kind", "folder", "session_id", "session_title", "user"]
 
 # Tools that cost credits are matched by name; read-only tools never charge.
 SPEND_TOOL = re.compile(r"__(generate_|upscale_|outpaint_|remove_background|reframe|voice_change|dubbing|"
@@ -67,6 +67,30 @@ def local(t):
 
 
 # ---------------------------------------------------------------- projects table
+
+VIDEO_MODELS = ("seedance", "kling", "wan ", "cinema", "omni", "hailuo", "veo", "sora", "runway",
+                "motion control", "lipsync", "video", "multiplier")
+IMAGE_MODELS = ("nano banana", "seedream", "gpt image", "soul", "flux", "midjourney", "image", "topaz")
+
+
+def kind_of(tool, model_name):
+    """video / image / audio - from the tool that was called, or the charge's model name."""
+    t = (tool or "").lower()
+    if "video" in t or t.startswith("motion") or "clipper" in t or "shorts" in t:
+        return "video"
+    if "image" in t or "background" in t or "outpaint" in t:
+        return "image"
+    if "audio" in t or "voice" in t or "dubbing" in t or "speech" in t:
+        return "audio"
+    m = (model_name or "").lower()
+    if any(w in m for w in VIDEO_MODELS):
+        return "video"
+    if any(w in m for w in IMAGE_MODELS):
+        return "image"
+    if "voice" in m or "lipsync" in m or "audio" in m:
+        return "audio"
+    return "other"
+
 
 def load_projects(p):
     rows = []
@@ -234,6 +258,7 @@ def match_charges(cfg, p, charges):
         seen.add(key)
         added.append({"created_at": t["created_at"], "model": t["display_name"],
                       "credits": f"{-float(t['credits']):.2f}", "action": t["action"],
+                      "kind": kind_of(call.get("tool"), t["display_name"]),
                       "folder": call["folder"], "session_id": call["session_id"],
                       "session_title": call.get("session_title", ""), "user": call.get("user", cfg["user"])})
 
@@ -283,15 +308,26 @@ def build_workbook(p):
     months = sorted({r["_month"] for r in rows})
     people = sorted({r["user"] for r in rows})
 
-    summary = [["Month", "Person", "Project", "Credits"]]
+    summary = [["Month", "Person", "Project", "Credits", "Videos", "Images"]]
     agg = defaultdict(float)
+    made = defaultdict(lambda: [0, 0])
     for r in rows:
-        agg[(r["_month"], r["user"], r["_project"])] += float(r["credits"])
-    for (m, who, proj), v in sorted(agg.items(), key=lambda kv: (kv[0][0], -kv[1])):
-        summary.append([m, who, "(needs project)" if proj == "?" else proj, round(v, 2)])
+        key = (r["_month"], r["user"], r["_project"])
+        agg[key] += float(r["credits"])
+        if r.get("action") == "spend":
+            if r.get("kind") == "video":
+                made[key][0] += 1
+            elif r.get("kind") == "image":
+                made[key][1] += 1
+    for key, v in sorted(agg.items(), key=lambda kv: (kv[0][0], -kv[1])):
+        m, who, proj = key
+        summary.append([m, who, "(needs project)" if proj == "?" else proj, round(v, 2),
+                        made[key][0], made[key][1]])
     summary += [[], ["Month totals"]]
     for m in months:
-        summary.append([m, "", "", round(sum(v for k, v in agg.items() if k[0] == m), 2)])
+        keys = [k for k in agg if k[0] == m]
+        summary.append([m, "", "", round(sum(agg[k] for k in keys), 2),
+                        sum(made[k][0] for k in keys), sum(made[k][1] for k in keys)])
 
     by_project = [["Project"] + months + ["Total"]]
     names = sorted({r["_project"] for r in rows}, key=lambda n: -sum(
@@ -305,9 +341,11 @@ def build_workbook(p):
 
     sheets = [("Summary", summary), ("By project", by_project)]
     for who in people:
-        tab = [["Date", "Model", "Credits", "Project", "Folder"]]
+        tab = [["Date", "Model", "Made", "Credits", "Project", "Folder"]]
         for r in sorted((r for r in rows if r["user"] == who), key=lambda r: r["created_at"], reverse=True):
-            tab.append([f"{local(ts(r['created_at'])):%Y-%m-%d %H:%M}", r["model"], round(float(r["credits"]), 2),
+            tab.append([f"{local(ts(r['created_at'])):%Y-%m-%d %H:%M}", r["model"],
+                        "refund" if r.get("action") == "refund" else r.get("kind", ""),
+                        round(float(r["credits"]), 2),
                         "(needs project)" if r["_project"] == "?" else r["_project"], r["folder"]])
         sheets.append((who, tab))
 
@@ -371,21 +409,28 @@ def rows_for(p, user_files=False):
             for r in csv.DictReader(f):
                 r.setdefault("user", who)
                 r["user"] = r.get("user") or who
+                if not r.get("kind"):
+                    r["kind"] = kind_of("", r.get("model"))
                 out.append(r)
     return out
 
 
 def table(title, rows, key_name, projects):
-    agg = defaultdict(float)
+    agg, vids, imgs = defaultdict(float), defaultdict(int), defaultdict(int)
     for r in rows:
         agg[r["_key"]] += float(r["credits"])
+        if r.get("action") == "spend":  # refunds shouldn't count as something made
+            if r.get("kind") == "video":
+                vids[r["_key"]] += 1
+            elif r.get("kind") == "image":
+                imgs[r["_key"]] += 1
     total = sum(agg.values())
     print(f"{title}\n")
-    print(f"| {key_name} | Credits | Share |\n|---|---:|---:|")
+    print(f"| {key_name} | Credits | Videos | Images | Share |\n|---|---:|---:|---:|---:|")
     for k, v in sorted(agg.items(), key=lambda kv: -kv[1]):
         share = f"{v / total:.0%}" if total else "-"
-        print(f"| {k} | {v:,.2f} | {share} |")
-    print(f"| **Total** | **{total:,.2f}** | |")
+        print(f"| {k} | {v:,.2f} | {vids[k]} | {imgs[k]} | {share} |")
+    print(f"| **Total** | **{total:,.2f}** | **{sum(vids.values())}** | **{sum(imgs.values())}** | |")
 
 
 def cmd_report(cfg, p, a):

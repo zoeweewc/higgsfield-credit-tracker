@@ -10,28 +10,37 @@ Reeve, including every subfolder. Nobody has to label anything while they work.
 
 ## Install (once, per person)
 
-In Claude Code, run:
+Everything comes from one shared Google Drive folder. No GitHub account, nothing to log into.
 
-```
-/plugin marketplace add zoeweewc/higgsfield-credit-tracker
-```
+**Step 1 — get the shared folder onto your Mac.** (You do this part yourself.)
 
-```
-/plugin install higgsfield-credits@funnelduo-tools
-```
+1. Install **Google Drive for desktop** and sign in, if it isn't already.
+2. In Google Drive in your browser: **Shared with me** → right-click **Higgsfield Credits**
+   → **Organise** → **Add shortcut to Drive** → pick **My Drive** → **Add**.
+3. Wait for Drive to finish syncing.
 
-Then tell it your first name. It finds the team's shared Drive folder by itself
-(`My Drive / Zoe Claude / Higgsfield Credits`, shared with you by Zoe), and reads your
-own past chats from the start of this month so your existing spend is already in there:
+Don't skip the shortcut. A folder sitting only in "Shared with me" never appears on your Mac,
+and the tracker won't find it.
+
+**Step 2 — install the tracker.** Run these, in order, replacing `<your first name>`:
+
+```bash
+HF=$(echo ~/Library/CloudStorage/GoogleDrive-*/My\ Drive/Higgsfield\ Credits)
+claude plugin marketplace add "$HF/Install"
+claude plugin install higgsfield-credits@funnelduo-tools
+```
 
 ```bash
 python3 ~/.claude/plugins/cache/*/higgsfield-credits/*/scripts/hf_credits.py setup --user <your first name>
 ```
 
-If it can't find the shared folder, the folder hasn't been shared with you yet, or Google Drive
-for desktop hasn't finished syncing. Wait for it, then run the line again.
+That last line also reads your own past chats from the start of this month, so the credits you have
+already spent are in there from day one.
 
 Restart Claude Code. That's the whole setup.
+
+If it says it can't find the shared folder, step 1 isn't done or Drive hasn't finished syncing.
+Wait for it, then run the line again.
 
 ---
 
@@ -76,6 +85,7 @@ itself every time anyone's chat ends, with a tab per person and a summary of eve
 | `projects.csv` | Folder → project, shared by everyone, so names stay consistent |
 | `calls/` | Raw log of each generation, used to match a charge to its project. Cleans itself up after 60 days. Leave it alone. |
 | `Higgsfield Credits.xlsx` | **The one spreadsheet** — rebuilt automatically after every chat. Tabs: Summary (credits, clips made, and finished ads delivered), By project, and one per person. Open it straight from Drive. |
+| `Install/` | The tracker itself, for installing it. Leave it alone. |
 | `summary-YYYY-MM.csv` | Optional flat export, if you want one |
 
 The ledger stores the **folder**, never the project name. That's why renaming a project instantly
@@ -97,14 +107,14 @@ the two is what reruns and takes cost you.
 
 ## Updating it later
 
-Plugin updates are not automatic. When the tracker changes, each person runs:
+When the tracker changes, Zoe refreshes the copy in the shared Drive folder. Each person then runs:
 
-```
-/plugin marketplace update funnelduo-tools
+```bash
+claude plugin marketplace update funnelduo-tools
 ```
 
-```
-/plugin update higgsfield-credits
+```bash
+claude plugin update higgsfield-credits
 ```
 
 and restarts Claude Code.

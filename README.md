@@ -31,7 +31,7 @@ claude plugin install higgsfield-credits@funnelduo-tools
 ```
 
 ```bash
-python3 ~/.claude/plugins/cache/*/higgsfield-credits/*/scripts/hf_credits.py setup --user <your first name>
+python3 "$(ls -d ~/.claude/plugins/cache/*/higgsfield-credits/*/scripts/hf_credits.py | tail -1)" setup --user <your first name>
 ```
 
 That last line also reads your own past chats from the start of this month, so the credits you have
@@ -85,7 +85,8 @@ itself every time anyone's chat ends, with a tab per person and a summary of eve
 | `projects.csv` | Folder → project, shared by everyone, so names stay consistent |
 | `calls/` | Raw log of each generation, used to match a charge to its project. Cleans itself up after 60 days. Leave it alone. |
 | `Higgsfield Credits.xlsx` | **The one spreadsheet** — rebuilt automatically after every chat. Tabs: Summary (credits, clips made, and finished ads delivered), By project, and one per person. Open it straight from Drive. |
-| `Install/` | The tracker itself, for installing it. Leave it alone. |
+| `engine/` | The tracker's actual code. This is what everyone runs. Leave it alone. |
+| `Install/` | The small launcher that points at `engine/`, for installing it. Leave it alone. |
 | `summary-YYYY-MM.csv` | Optional flat export, if you want one |
 
 The ledger stores the **folder**, never the project name. That's why renaming a project instantly
@@ -107,20 +108,38 @@ the two is what reruns and takes cost you.
 
 ## Updating it later
 
-When the tracker changes, Zoe refreshes the copy in the shared Drive folder. Each person then runs:
+**Almost nothing to do.** The tracker's code lives in `engine/` in the shared Drive folder, and
+that is what everyone actually runs. Fix something there and the next generation anyone makes uses
+the fixed version — no commands, no restart, no message to the team.
+
+Each person's Mac holds only a small launcher that points at `engine/`, plus a spare copy of the
+code for when Drive is unreachable. The launcher is the only part a plugin update can change, and
+it is deliberately tiny, so it should almost never need one.
+
+What does and doesn't need an update:
+
+| Change | Needs an update? |
+|---|---|
+| Anything in `engine/` — how spend is counted, reports, the spreadsheet | No |
+| Project names (`projects.csv`) | No |
+| How the hooks are wired (`hooks.json`), or what the skill tells Claude (`SKILL.md`) | Yes |
+
+When one of those does change, refresh `Install/` in the shared folder, bump the version in
+`plugin.json`, and have each person run:
 
 ```bash
 claude plugin marketplace update funnelduo-tools
 ```
 
 ```bash
-claude plugin update higgsfield-credits
+claude plugin update higgsfield-credits@funnelduo-tools
 ```
 
-and restarts Claude Code.
+then restart Claude Code. **The version has to change or the update does nothing** — it reports
+"already at the latest version" and keeps the old files.
 
-**Project names are the exception** — they live in `projects.csv` in the shared Drive folder, so
-renaming or merging projects reaches everyone straight away with no update needed.
+Everyone with edit access to the shared folder can change code that runs on the whole team's Macs.
+That is the trade for updates being free; keep the folder shared with the team only.
 
 ---
 

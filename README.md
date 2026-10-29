@@ -124,8 +124,14 @@ What does and doesn't need an update:
 | Project names (`projects.csv`) | No |
 | How the hooks are wired (`hooks.json`), or what the skill tells Claude (`SKILL.md`) | Yes |
 
-When one of those does change, refresh `Install/` in the shared folder, bump the version in
-`plugin.json`, and have each person run:
+Either way, push changes to the shared folder with `./publish.sh`. Never copy files in by hand:
+overwriting a file inside a Drive folder can silently never upload, leaving the whole team on the
+old code with no error anywhere. `publish.sh` deletes before it writes, compares every file
+afterwards, and refuses to report success until Drive confirms it has taken each one. `./publish.sh
+--check` verifies without changing anything.
+
+When the launcher or the skill changes, also bump the version in `plugin.json`, then have each
+person run:
 
 ```bash
 claude plugin marketplace update funnelduo-tools

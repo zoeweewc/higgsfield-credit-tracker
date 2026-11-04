@@ -237,7 +237,8 @@ def cmd_sync(cfg, p, a):
 
 def match_charges(cfg, p, charges):
     """Attach each charge to the generation that caused it, then save."""
-    calls = read_calls(p)
+    # a shared Higgsfield account shows everyone's charges in `transactions`; only claim our own
+    calls = [c for c in read_calls(p) if c.get("user", cfg["user"]) == cfg["user"]]
     ledger = load_ledger(p)
     seen = {(r["created_at"], r["model"], r["action"]) for r in ledger}
     used_calls, added = set(), []
@@ -343,7 +344,7 @@ def _push(cfg, p, everything=False):
                                  "kind": r.get("kind") or kind_of("", r["model"]),  # older rows were saved without one
                                  "project": proj, "folder": r["folder"]}))
     ads = [{"month": m, "project": proj, "count": n}
-           for (m, proj), n in sorted(count_finished_ads(p, projects, ledger).items())]
+           for (m, proj), n in sorted(count_finished_ads(p, projects, only_user=cfg["user"]).items())]
 
     def send(rows, with_ads):
         res = post_json(cfg["endpoint"], {"secret": cfg["secret"], "user": cfg["user"],
@@ -377,53 +378,59 @@ def cmd_push(cfg, p, a):
 
 # ---------------------------------------------------------------- projects / reports
 
-VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm")
-SKIP_DIRS = ("archive", "archieve", "old", "draft", "wip", "raw")
+# A finished ad is recorded when someone says so (see `finished`), not guessed from files.
+# One ad is one name in one folder, however many clips went into it.
+
+def finished_files(p, only_user=None):
+    out = []
+    for fn in sorted(os.listdir(p["dir"])):
+        if fn.startswith("finished-") and fn.endswith(".csv"):
+            who = fn[len("finished-"):-len(".csv")]
+            if only_user is None or who == only_user:
+                out.append((who, os.path.join(p["dir"], fn)))
+    return out
 
 
-def count_finished_ads(p, projects, rows):
-    """How many finished ads were delivered, per project per month.
-
-    A finished ad = one video file sitting in a folder whose name contains "final"
-    (e.g. `Ads/Final Ads`, `Ad Production/Ads/Final`), inside that project's folder.
-    Counted by the month the file was last changed. Archive/draft subfolders are skipped.
-    """
-    import glob
-    roots = defaultdict(set)
-    for r in rows:
-        folder = r["folder"]
-        proj = project_of(folder, projects)
-        if proj == "?":
-            continue
-        for needle, name in projects:
-            if needle in folder and name == proj:
-                root = folder[:folder.index(needle) + len(needle)]
-                roots[proj].add(root)
-                break
-    counts = defaultdict(int)
-    for proj, dirs in roots.items():
-        seen = set()
-        for root in sorted(dirs):
-            if not os.path.isdir(root):
-                continue
-            for final_dir in glob.glob(os.path.join(root, "**", "*[Ff]inal*"), recursive=True):
-                if not os.path.isdir(final_dir):
-                    continue
-                for dirpath, dirnames, files in os.walk(final_dir):
-                    dirnames[:] = [d for d in dirnames if d.lower() not in SKIP_DIRS]
-                    for name in files:
-                        if not name.lower().endswith(VIDEO_EXT):
-                            continue
-                        full = os.path.join(dirpath, name)
-                        if full in seen:
-                            continue
-                        seen.add(full)
-                        try:
-                            when = datetime.fromtimestamp(os.path.getmtime(full))
-                        except OSError:
-                            continue
-                        counts[(f"{when:%Y-%m}", proj)] += 1
+def count_finished_ads(p, projects, rows=None, only_user=None):
+    """Finished ads per (month, project), from what was recorded with `finished`."""
+    counts, seen = defaultdict(int), set()
+    for who, fn in finished_files(p, only_user):
+        with open(fn, newline="", encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                key = (who, r["folder"], r["name"].strip().lower())
+                if key in seen:
+                    continue  # the same ad marked twice is still one ad
+                seen.add(key)
+                counts[(f"{local(ts(r['created_at'])):%Y-%m}", project_of(r["folder"], projects))] += 1
     return counts
+
+
+def cmd_finished(cfg, p, a):
+    fn = os.path.join(p["dir"], f"finished-{cfg['user']}.csv")
+    rows = []
+    if os.path.exists(fn):
+        with open(fn, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+    folder = a.folder or os.getcwd()
+    name = a.name.strip()
+    if a.remove:
+        kept = [r for r in rows if not (r["name"].strip().lower() == name.lower() and r["folder"] == folder)]
+        print(f'Removed "{name}".' if len(kept) < len(rows) else f'No finished ad called "{name}" in this folder.')
+        rows = kept
+    elif any(r["name"].strip().lower() == name.lower() and r["folder"] == folder for r in rows):
+        print(f'"{name}" is already counted as a finished ad. Nothing added.')
+        return
+    else:
+        rows.append({"created_at": now().isoformat(timespec="seconds"), "name": name,
+                     "folder": folder, "user": cfg["user"]})
+        project = project_of(folder, load_projects(p))
+        print(f'Counted as a finished ad: "{name}" - {project if project != "?" else "no project yet"}.')
+    with open(fn, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["created_at", "name", "folder", "user"])
+        w.writeheader()
+        w.writerows(rows)
+    build_workbook(p)
+    push_new(cfg, p)
 
 
 def build_workbook(p):
@@ -742,6 +749,8 @@ def main():
     s = sub.add_parser("backfill"); s.add_argument("--since", help="YYYY-MM-DD, default the 1st of this month")
     sub.add_parser("workbook")
     s = sub.add_parser("push"); s.add_argument("--all", action="store_true", help="resend everything, not just what's new")
+    s = sub.add_parser("finished", help="count one finished ad"); s.add_argument("--name", required=True)
+    s.add_argument("--folder", help="default: the folder you are in"); s.add_argument("--remove", action="store_true")
     a = ap.parse_args()
 
     cfg = load_config()
@@ -764,6 +773,8 @@ def main():
         build_workbook(p)
     elif a.cmd == "push":
         cmd_push(cfg, p, a)
+    elif a.cmd == "finished":
+        cmd_finished(cfg, p, a)
 
 
 if __name__ == "__main__":

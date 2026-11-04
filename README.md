@@ -85,10 +85,13 @@ read or change the sheet.
 
 ## How finished ads are counted
 
-A **finished ad** is one video file sitting in a folder whose name contains "final" inside that
-project — `Ads/Final Ads`, `Ad Production/Ads/Final`, and so on. Put the delivered cut there and
-it's counted; drafts and takes elsewhere are not. `Archive`, `Old`, `Draft`, `WIP` and `Raw`
-subfolders are skipped.
+A **finished ad** is one ad, however many clips went into it. It is counted when Claude is asked
+to **compile a video for use**, or, for IG BOMB, when you say it has been **posted**. For other
+projects Claude uses its judgement: a cut meant to be used or delivered counts; drafts, tests and
+re-exports do not. If it can't tell, it asks. Nothing is read from folders.
+
+Each count is stored by name, so marking the same ad twice never counts it twice. To undo one,
+tell Claude *"that wasn't a finished ad"*.
 
 "Clips made" is the raw count of generations, which is usually 20-40x higher. The gap between
 the two is what reruns and takes cost you.

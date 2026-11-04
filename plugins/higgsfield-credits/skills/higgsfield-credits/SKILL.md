@@ -1,6 +1,6 @@
 ---
 name: higgsfield-credits
-description: Record and report Higgsfield credit spend per project. Use whenever Higgsfield MCP generations have just run and need costing, when the Stop hook asks for a sync, when the user asks what they or the team have spent this month, or when the user says which project a folder belongs to.
+description: Record and report Higgsfield credit spend per project, and count finished ads. Use whenever Higgsfield MCP generations have just run and need costing, when the Stop hook asks for a sync, when the user asks what they or the team have spent this month, when the user says which project a folder belongs to, or when the user asks to compile, assemble, export or finalise a video for use, or says an IG BOMB video has been posted.
 ---
 
 # Higgsfield credit tracking
@@ -39,9 +39,27 @@ If `sync` says generations are still unpriced, fetch the next `transactions` pag
 - Also write a spreadsheet file for the Google Sheet: add `--csv`
 
 The table shows credits, how many clips and images were generated (refunds excluded), and how
-many **finished ads** were delivered - counted as video files in each project's `Final` folder. Give it
-in chat, plus one line on what stands out. Don't save
+many **finished ads** were counted. Give it in chat, plus one line on what stands out. Don't save
 reports as files unless asked.
+
+## Counting a finished ad
+
+A finished ad is not a clip and not a file in a folder. One ad is one ad, however many clips went
+into it. Count it by running, from the folder this chat is working in:
+
+`python3 <script> finished --name "<short name of the ad>"`
+
+When to run it:
+- **Whenever the user asks you to compile, assemble, export or finalise a video for use.** That is
+  the moment the ad exists. Run it once the compile is done.
+- **IG BOMB:** count it when the user says the video has been **posted**, not when it is compiled.
+- **Every other project:** use your judgement. Count a cut that is meant to be used or delivered.
+  Don't count drafts, tests, previews or a re-export of an ad already counted. If you can't tell,
+  ask the user in one line.
+
+Use the same name for the same ad, so marking it twice never counts it twice. If you counted
+something by mistake, undo it with `finished --name "<name>" --remove`. Tell the user in one line
+what you counted.
 
 ## Renaming or merging projects
 

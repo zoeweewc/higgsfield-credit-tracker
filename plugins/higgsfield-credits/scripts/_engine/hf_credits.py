@@ -139,6 +139,44 @@ def read_calls(p, session_id=None):
     return out
 
 
+def texts(x):
+    """Every string inside a tool result, whatever shape it came in."""
+    if isinstance(x, str):
+        yield x
+    elif isinstance(x, dict):
+        for v in x.values():
+            yield from texts(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from texts(v)
+
+
+def track_bash(event):
+    """A chat just ran ad-start or finished: remember which ad THIS chat is on.
+
+    The command can't know which chat ran it, but this hook can, so the pointer is kept per chat.
+    That way two chats in one folder, each on its own ad, never overwrite each other.
+    """
+    command = (event.get("tool_input") or {}).get("command", "")
+    if "hf_credits.py" not in command or not ("ad-start" in command or "finished" in command):
+        return
+    out = "\n".join(texts(event.get("tool_response")))
+    sid = event.get("session_id", "")
+    state = load_active()
+    started = re.search(r'(?:Started|Resumed) ad "([^"]+)"', out)
+    finished = re.search(r'Finished: "([^"]+)"', out)
+    if started:
+        state["sessions"][sid] = {"name": started.group(1), "at": now().isoformat(timespec="seconds")}
+    elif finished and state["sessions"].get(sid, {}).get("name", "").lower() == finished.group(1).lower():
+        # this chat is between ads now. Keep a blank entry so its next clip is not mistaken for another
+        # chat's ad in the same folder, and let the next clip nudge Claude to open the next ad
+        state["sessions"][sid] = {"name": "", "at": now().isoformat(timespec="seconds")}
+        state["reminded"].pop(sid, None)
+    else:
+        return
+    save_active(state)
+
+
 def cmd_hook_post(cfg, p):
     """PostToolUse: a Higgsfield generation just ran. Log it with its folder."""
     try:
@@ -146,6 +184,8 @@ def cmd_hook_post(cfg, p):
     except ValueError:
         return
     tool = event.get("tool_name", "")
+    if tool == "Bash":
+        return track_bash(event)
     if "higgsfield" not in tool.lower() and not SPEND_TOOL.search(tool):
         return
     if not SPEND_TOOL.search(tool):
@@ -155,7 +195,12 @@ def cmd_hook_post(cfg, p):
            "models": models, "folder": event.get("cwd", ""), "session_id": event.get("session_id", ""),
            "user": cfg["user"], "priced": False}
     state = load_active()
-    ad = state["folders"].get(os.path.realpath(rec["folder"])) if rec["folder"] else None
+    # this chat's own ad first; the folder's ad is the fallback for chats that started before per-chat tracking
+    mine = state["sessions"].get(rec["session_id"])
+    if mine is not None:
+        ad = mine.get("name") or None  # a chat that has used per-chat tracking never borrows the folder's ad
+    else:
+        ad = state["folders"].get(os.path.realpath(rec["folder"])) if rec["folder"] else None
     if ad:
         rec["ad"] = ad
     with open(call_file(p, rec["session_id"]), "a") as f:
@@ -290,6 +335,9 @@ def match_charges(cfg, p, charges):
         ads = load_ads(p, cfg["user"])
         for r in tagged:
             ad = find_ad(ads, r["folder"], r["ad"])
+            if ad is None:  # opened from a different folder than the chat's: fine if the name is unique
+                same = [x for x in ads if x["name"].strip().lower() == r["ad"].strip().lower()]
+                ad = same[0] if len(same) == 1 else None
             if ad:
                 ad["credits"] += float(r["credits"])
                 if r["action"] == "spend":
@@ -543,7 +591,7 @@ def find_ad(rows, folder, name):
 
 def load_active():
     """Which ad is open in which folder, and which chats have already been nudged. Local to this Mac."""
-    state = {"folders": {}, "reminded": {}}
+    state = {"folders": {}, "sessions": {}, "reminded": {}}
     if os.path.exists(ACTIVE_PATH):
         try:
             state.update(json.load(open(ACTIVE_PATH)))
@@ -555,6 +603,7 @@ def load_active():
 def save_active(state):
     cutoff = (now() - timedelta(days=30)).isoformat(timespec="seconds")
     state["reminded"] = {k: v for k, v in state["reminded"].items() if v >= cutoff}
+    state["sessions"] = {k: v for k, v in state["sessions"].items() if v.get("at", "") >= cutoff}
     os.makedirs(os.path.dirname(ACTIVE_PATH), exist_ok=True)
     json.dump(state, open(ACTIVE_PATH, "w"))
 

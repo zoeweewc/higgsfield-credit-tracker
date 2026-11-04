@@ -102,13 +102,17 @@ variant is its own ad with its own cost. Old ads are not worked out backwards.
 it has been **posted**. For other projects Claude uses its judgement and asks if unsure. To undo one,
 tell Claude *"that wasn't a finished ad"*.
 
+Each chat has its own current ad, so several chats can work in the same folder on different ads
+without mixing them up. Chats that were already open when this was added fall back to the folder's
+most recently opened ad until they are restarted.
+
 Credits spent when no ad is open still count to the project, just not to an ad. If an ad is made
 over several chats, Claude picks it up again by name and the cost carries on.
 
 Ask Claude *"which style costs the most per ad?"* or open the **By style** tab in the team sheet.
 
-One limit: a clip generated within a few seconds of switching to the next ad can land on the
-neighbouring ad.
+One limit: a charge is matched to its clip by timing, so a clip generated within a few seconds of
+another can occasionally have its cost land on its neighbour.
 
 "Clips made" is the raw count of generations, which is usually 20-40x higher than finished ads.
 The gap is what reruns and takes cost you.

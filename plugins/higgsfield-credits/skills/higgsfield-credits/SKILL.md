@@ -57,7 +57,9 @@ worked out backwards.
   made. If you are not sure, ask the user in one line. Never leave it blank.
 - **Project** comes from the folder. Don't ask for it.
 - **Each hook variant is its own ad**, with its own name and its own `ad-start`.
-- Starting a second ad in the same folder moves the counting to it. Start it before its first clip.
+- **Whenever you switch to a different ad, run `ad-start` for it before its next clip, including going
+  back to an earlier ad in the same chat.** The tracker remembers one current ad per chat, so the
+  command is what tells it which ad each clip is for. Other chats in the same folder don't affect yours.
 - **Continuing an ad in a new chat:** run `ad-start --name "<same name>"` (no style needed) and the
   cost carries on from where it was.
 - If a hook says *no ad is open*, and the generation is for an ad, ask for the name and style and run

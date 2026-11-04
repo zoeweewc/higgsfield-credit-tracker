@@ -1,6 +1,6 @@
 ---
 name: higgsfield-credits
-description: Record and report Higgsfield credit spend per project, and track what each ad costs. Use whenever Higgsfield MCP generations have just run and need costing, when the Stop hook asks for a sync, when a hook says no ad is open, when the user starts a new ad or video, when the user asks what they or the team have spent or what an ad or a style costs, when the user says which project a folder belongs to, or when the user asks to compile, assemble, export or finalise a video for use, or says an IG BOMB video has been posted.
+description: Record and report Higgsfield credit spend per project, and track what each finished video costs. Use whenever Higgsfield MCP generations have just run and need costing, when the Stop hook asks for a sync, when a hook says no ad is open, when the user starts a new video or ad, when the user asks what they or the team have spent or what a video or a style costs, when the user says which project a folder belongs to, or when the user asks to compile, assemble, export or finalise a video for use, or says an IG BOMB video has been posted.
 ---
 
 # Higgsfield credit tracking
@@ -42,55 +42,59 @@ The table shows credits, how many clips and images were generated (refunds exclu
 many **finished ads** were counted. Give it in chat, plus one line on what stands out. Don't save
 reports as files unless asked.
 
-## Tracking what each ad costs
+## Tracking what each finished video costs
 
-An ad is opened when it **starts**. From then on every credit spent in that folder is counted to it
-automatically, retries and rejected takes included. Credits spent before an ad was opened are not
-worked out backwards.
+The unit is a **finished video**: the final cut that combines multiple clips into one, for any
+project or piece of content, whether or not it is an ad. (The commands below still say `ad`; read that
+as "video".) A video is opened when it **starts**. From then on every credit spent in that folder is
+counted to it automatically, retries and rejected takes included. Credits spent before a video was
+opened are not worked out backwards. Images or clips that never become a finished video, such as a
+set of GenAI images, a test or a reference, are not tracked per item: they stay in the project's total.
 
-**Start every ad before its first clip.** Run, from the folder this chat is working in:
+**Start every video before its first clip.** Run, from the folder this chat is working in:
 
-`python3 <script> ad-start --name "<ad name>" --style "<style>"`
+`python3 <script> ad-start --name "<video name>" --style "<style>"`
 
-- **Name:** whatever the user or the client calls the ad. Don't invent one. If you don't know it, ask.
+- **Name:** whatever the user or the client calls the video. Don't invent one. If you don't know it, ask.
 - **Style:** one of **Animated, AI UGC, Cinematic, Hypermotion**. Pick the closest from what is being
   made. If you are not sure, ask the user in one line. Never leave it blank.
 - **Project** comes from the folder. Don't ask for it.
-- **One ad is one piece of content.** Every style version and every language version of the same
-  content is the same ad, so use the same name for all of them and their costs add up. For example a
-  reel built in clay, stickman and motion graphic, in Chinese and Malay, is one ad. Several chats can
+- **One video is one piece of content.** Every style version and every language version of the same
+  content is the same video, so use the same name for all of them and their costs add up. For example a
+  reel built in clay, stickman and motion graphic, in Chinese and Malay, is one video. Several chats can
   each run `ad-start` with that same name.
-- **A hook variant** (same content, different first few seconds) is its own ad, with its own name.
-- **IG BOMB:** name the ad after the reel, the way the user calls it (for example `忘记名字`), and use
+- **A hook variant** (same content, different first few seconds) is its own video, with its own name.
+- **IG BOMB:** name the video after the reel, the way the user calls it (for example `忘记名字`), and use
   the style **Animated** for clay, stickman and motion graphic builds.
-- **Whenever you switch to a different ad, run `ad-start` for it before its next clip, including going
-  back to an earlier ad in the same chat.** The tracker remembers one current ad per chat, so the
-  command is what tells it which ad each clip is for. Other chats in the same folder don't affect yours.
-- **Continuing an ad in a new chat:** run `ad-start --name "<same name>"` (no style needed) and the
+- **Whenever you switch to a different video, run `ad-start` for it before its next clip, including going
+  back to an earlier video in the same chat.** The tracker remembers one current video per chat, so the
+  command is what tells it which video each clip is for. Other chats in the same folder don't affect yours.
+- **Continuing a video in a new chat:** run `ad-start --name "<same name>"` (no style needed) and the
   cost carries on from where it was.
-- If a hook says *no ad is open*, and the generation is for an ad, ask for the name and style and run
-  `ad-start`. If it is a test or a reference image, ignore it.
+- If a hook says *no ad is open*, and the generation is for a video that will be combined into a final
+  cut, ask for the name and style and run `ad-start`. If it is a test, a reference image or standalone
+  images, ignore it.
 
-**Finish it** when it exists as a finished ad:
+**Finish it** when the final video exists:
 
-`python3 <script> finished --name "<ad name>"`
+`python3 <script> finished --name "<video name>"`
 
-- **Whenever the user asks you to compile, assemble, export or finalise a video for use.** Run it once
-  the compile is done.
+- **Whenever the user asks you to compile, assemble, export or finalise the clips into the final video.**
+  Run it once the compile is done.
 - **IG BOMB:** finished means **posted**. Run it when the user says it has been posted, not when it is
   compiled.
 - **Every other project:** use your judgement. A cut meant to be used or delivered is finished. Drafts,
-  tests, previews and a re-export of an ad already finished are not. If you can't tell, ask in one line.
-- If the ad was never opened with `ad-start`, finishing it still counts it but its cost was not
+  tests, previews and a re-export of a video already finished are not. If you can't tell, ask in one line.
+- If the video was never opened with `ad-start`, finishing it still counts it but its cost was not
   tracked, and the command says so. Add `--style "<style>"` if it has none.
 - If something was marked finished by mistake: `finished --name "<name>" --remove`.
 
 Tell the user in one line what you started or finished and what it has cost so far.
 
-**To answer "what does an ad cost" or "which style is worth it":** run `python3 <script> ads`
-(add `--month 2026-11` for one month). It shows credits per finished ad by style, and every ad with
-its cost. Give the table in chat plus one line on what stands out, such as the cheapest and the most
-expensive style.
+**To answer "what does a video cost" or "which style is worth it":** run `python3 <script> ads`
+(add `--month 2026-11` for one month). It shows credits per finished video by style, and every video
+with its cost. Give the table in chat plus one line on what stands out, such as the cheapest and the
+most expensive style.
 
 ## Renaming or merging projects
 

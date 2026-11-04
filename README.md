@@ -88,33 +88,42 @@ read or change the sheet.
 
 ---
 
-## What each ad costs
+## What each finished video costs
 
-The point is to see which kinds of video are worth their credits.
+The point is to see which kinds of video are worth their credits. The unit is a **finished video**:
+the final cut that combines multiple clips into one, for any project or piece of content, whether or
+not it is an ad.
 
-**When a new ad starts,** Claude opens it with four things: the **name** (whatever you or the client
-call it), the **project** (from the folder), the **style** (**Animated, AI UGC, Cinematic or
+**When a new video starts,** Claude opens it with four things: the **name** (whatever you or the
+client call it), the **project** (from the folder), the **style** (**Animated, AI UGC, Cinematic or
 Hypermotion**), and from then on the **total credits** spent on it, including retries and rejected
-takes. It asks you in one line if it doesn't know the name or isn't sure of the style. **One ad is one piece of content:** every style version and language version of it shares the one
-ad, so their costs add up. A hook variant is its own ad. Old ads are not worked out backwards.
+takes. It asks you in one line if it doesn't know the name or isn't sure of the style.
 
-**An ad is finished** when Claude is asked to compile a video for use, or, for IG BOMB, when you say
-it has been **posted**. For other projects Claude uses its judgement and asks if unsure. To undo one,
-tell Claude *"that wasn't a finished ad"*.
+**One video is one piece of content:** every style version and language version of it shares the one
+video, so their costs add up. A hook variant is its own video. Old videos are not worked out
+backwards.
 
-Each chat has its own current ad, so several chats can work in the same folder on different ads
-without mixing them up. Chats that were already open when this was added fall back to the folder's
-most recently opened ad until they are restarted.
+**A video is finished** when Claude is asked to compile the clips into the final video, or, for IG
+BOMB, when you say it has been **posted**. For other projects Claude uses its judgement and asks if
+unsure. To undo one, tell Claude *"that wasn't a finished video"*.
 
-Credits spent when no ad is open still count to the project, just not to an ad. If an ad is made
-over several chats, Claude picks it up again by name and the cost carries on.
+Images or clips that never become a finished video, such as a set of GenAI images, are not tracked
+per item. They still count to the project's total in the **Summary** tab.
 
-Ask Claude *"which style costs the most per ad?"* or open the **By style** tab in the team sheet.
+Each chat has its own current video, so several chats can work in the same folder on different
+videos without mixing them up. Chats that were already open when this was added fall back to the
+folder's most recently opened video until they are restarted.
+
+Credits spent when no video is open still count to the project, just not to a video. If a video is
+made over several chats, Claude picks it up again by name and the cost carries on.
+
+Ask Claude *"which style costs the most per video?"* or open the **By style** tab in the team sheet.
+(The sheet's tabs and the commands still say "Ads" and `ad-start`; they mean finished videos.)
 
 One limit: a charge is matched to its clip by timing, so a clip generated within a few seconds of
 another can occasionally have its cost land on its neighbour.
 
-"Clips made" is the raw count of generations, which is usually 20-40x higher than finished ads.
+"Clips made" is the raw count of generations, which is usually 20-40x higher than finished videos.
 The gap is what reruns and takes cost you.
 
 ---

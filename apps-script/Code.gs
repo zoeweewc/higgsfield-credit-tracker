@@ -163,9 +163,69 @@ function refresh(ss) {
   const monthRows = [['Month', 'Credits', 'Clips made', 'Images made', 'Finished ads']].concat(
     [...months.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([m, t]) => [m].concat(t.map(round))));
 
-  write(ss, 'Month totals', monthRows);
+  const projects = [...new Set([...byProject.keys()].map(k => k.split(SEP)[1]))];
+  const spent = p => [...byProject.entries()].filter(([k]) => k.split(SEP)[1] === p).reduce((a, [, t]) => a + t[0], 0);
+  projects.sort((a, b) => spent(b) - spent(a));
+  const monthsUp = [...months.keys()].sort();
+  const matrix = [['Month'].concat(projects)].concat(monthsUp.map(m =>
+    [m].concat(projects.map(p => round((byProject.get(m + SEP + p) || [0])[0])))));
+  const totalsGrid = monthRows.concat([[], ['Credits by project, month by month']], matrix);
+  const width = Math.max(...totalsGrid.map(r => r.length));
+  totalsGrid.forEach(r => { while (r.length < width) r.push(''); });
+
+  write(ss, 'Month totals', totalsGrid);
   write(ss, 'Summary', table(byProject, ['Month', 'Project', 'Credits', 'Clips made', 'Images made', 'Finished ads']));
   write(ss, 'By person', table(byPerson, ['Month', 'Person', 'Credits', 'Clips made', 'Images made', 'Finished ads']));
+  style(ss, monthRows.length, matrix.length, projects.length);
+}
+
+// Colour and a chart, to make the months easy to read at a glance. This is decoration only, so a
+// failure here must never stop the numbers from being saved.
+function style(ss, totalRows, matrixRows, projectCount) {
+  try {
+    const TINTS = ['#e8f0fe', '#fff4e0'];
+    ['Summary', 'By person'].forEach(name => {
+      const sh = ss.getSheetByName(name), last = sh.getLastRow(), cols = sh.getLastColumn();
+      sh.getRange(1, 1, 1, cols).setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+      if (last < 2) return;
+      const months = sh.getRange(2, 1, last - 1, 1).getValues().map(r => r[0]);
+      let tint = 0;
+      const fills = months.map((m, i) => {
+        if (i > 0 && m !== months[i - 1]) tint = 1 - tint;
+        return new Array(cols).fill(TINTS[tint]);
+      });
+      sh.getRange(2, 1, last - 1, cols).setBackgrounds(fills);
+      months.forEach((m, i) => {  // a line above each new month
+        if (i === 0 || m !== months[i - 1]) sh.getRange(i + 2, 1, 1, cols).setBorder(true, null, null, null, null, null, '#5f6368', SpreadsheetApp.BorderStyle.SOLID);
+      });
+      sh.getRange(2, 3, last - 1, 1).setNumberFormat('#,##0.00').setFontWeight('bold');
+      sh.getRange(2, 4, last - 1, 3).setNumberFormat('#,##0');
+      sh.setConditionalFormatRules([SpreadsheetApp.newConditionalFormatRule()
+        .setGradientMinpoint('#ffffff').setGradientMaxpoint('#57bb8a')
+        .setRanges([sh.getRange(2, 3, last - 1, 1)]).build()]);
+      sh.setColumnWidth(2, 180);
+      sh.autoResizeColumns(3, cols - 2);
+    });
+
+    const mt = ss.getSheetByName('Month totals');
+    mt.getRange(1, 1, 1, 5).setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+    mt.getRange(2, 2, totalRows - 1, 1).setNumberFormat('#,##0.00').setFontWeight('bold');
+    mt.getRange(totalRows + 2, 1).setFontWeight('bold').setFontSize(12);
+    const head = totalRows + 3;
+    mt.getRange(head, 1, 1, projectCount + 1).setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+    if (matrixRows > 1) mt.getRange(head + 1, 2, matrixRows - 1, projectCount).setNumberFormat('#,##0');
+    mt.autoResizeColumns(1, Math.min(projectCount + 1, 8));
+    mt.getCharts().forEach(c => mt.removeChart(c));
+    if (projectCount > 0 && matrixRows > 1) {
+      mt.insertChart(mt.newChart().setChartType(Charts.ChartType.COLUMN)
+        .addRange(mt.getRange(head, 1, matrixRows, projectCount + 1)).setNumHeaders(1)
+        .setOption('isStacked', true).setOption('title', 'Credits by month, split by project')
+        .setOption('legend', { position: 'right' }).setOption('width', 760).setOption('height', 360)
+        .setPosition(head + matrixRows + 2, 1, 0, 0).build());
+    }
+  } catch (err) {
+    console.error('style failed: ' + err);
+  }
 }
 
 const round = v => Math.round(v * 100) / 100;

@@ -48,8 +48,10 @@ that folder, and applied to everything already recorded from it.
 **Any time you want to know your own spend:** ask Claude *"how much have I spent this month?"*
 
 Your own records stay on your Mac, in `~/Higgsfield Credits`. Each new line is also sent to the
-team sheet, which keeps the full detail for this month and last and only the monthly totals for
-older months. Your own list is the backup if the sheet is ever lost. If you're offline, or the sheet is down, nothing breaks: it sends again next time.
+team sheet. Both keep every charge for this month and last month, and only a short monthly total
+for older months, so nothing grows without limit. Once the sheet has an older month's total, the
+detailed lines for that month are removed from your Mac as well. Backfilling can therefore only go
+back to last month. If you're offline, or the sheet is down, nothing breaks: it sends again next time.
 
 ---
 
@@ -59,9 +61,9 @@ One Google Sheet, filled in automatically. Nobody else needs access to it.
 
 | Tab | What it is |
 |---|---|
-| **Summary** | Each month, by project: credits, clips made, images made, finished ads |
+| **Summary** | Each month, by project: credits, clips made, images made, finished ads. Each month has its own colour band, and the heaviest spend is shaded green. |
 | **By person** | Each month, by person |
-| **Month totals** | One line per month |
+| **Month totals** | One line per month, then credits by project month by month, with a stacked chart |
 | **Project names** | Everyone's project names, each with an empty box. Type your own team name for a project and every total uses it. This is how `Reeve` and `Reeve Ads` from two people become one project. |
 | **Ledger**, **History**, **Finished ads** | What the totals are built from. Leave these alone. The Ledger holds every charge for this month and last month. Older months are squeezed into **History**, one short line per person and project, so the sheet never grows without limit. The totals do not change when this happens. |
 

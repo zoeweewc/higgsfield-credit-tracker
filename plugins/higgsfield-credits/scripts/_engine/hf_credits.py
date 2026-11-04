@@ -248,6 +248,8 @@ def match_charges(cfg, p, charges):
         if key in seen:
             continue
         when = ts(t["created_at"])
+        if cfg.get("endpoint") and f"{local(when):%Y-%m}" < detail_from():
+            continue  # that month is kept as a total only; adding it again would count it twice
         word = (re.findall(r"[a-z]+", t["display_name"].lower()) or [""])[0]
         cands = [c for c in calls
                  if ts(c["at"]) - WINDOW_BEFORE <= when <= ts(c["at"]) + WINDOW_AFTER
@@ -327,6 +329,49 @@ def detail_from():
     return f"{y}-{m:02d}"
 
 
+def history_path(p, cfg):
+    return os.path.join(p["dir"], f"history-{cfg['user']}.csv")
+
+
+def load_history(path):
+    """Older months this person has already folded into totals: {(month, folder): [credits, clips, images]}."""
+    out = {}
+    if os.path.exists(path):
+        with open(path, newline="", encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                out[(r["month"], r["folder"])] = [float(r["credits"]), int(r["clips"]), int(r["images"])]
+    return out
+
+
+def fold(history, r):
+    """Add one ledger line to the monthly totals."""
+    h = history.setdefault((f"{local(ts(r['created_at'])):%Y-%m}", r["folder"]), [0.0, 0, 0])
+    h[0] += float(r["credits"])
+    if r.get("action") == "spend":
+        kind = r.get("kind") or kind_of("", r["model"])
+        h[1] += kind == "video"
+        h[2] += kind == "image"
+
+
+def compact(cfg, p, cutoff):
+    """Once the sheet holds an older month as a total, this Mac keeps only the total too."""
+    ledger, path = load_ledger(p), history_path(p, cfg)
+    mine = lambda r: (r.get("user") or cfg["user"]) == cfg["user"]
+    old = [r for r in ledger if mine(r) and f"{local(ts(r['created_at'])):%Y-%m}" < cutoff]
+    if not old:
+        return
+    history = load_history(path)
+    for r in old:
+        fold(history, r)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["month", "folder", "credits", "clips", "images"])
+        for (month, folder), (c, v, i) in sorted(history.items()):
+            w.writerow([month, folder, f"{c:.2f}", v, i])
+    drop = {id(r) for r in old}
+    write_ledger(p, [r for r in ledger if id(r) not in drop])
+
+
 def _push(cfg, p, everything=False):
     if not cfg.get("secret"):
         raise RuntimeError("no password in the config; run setup again with --secret")
@@ -340,17 +385,15 @@ def _push(cfg, p, everything=False):
     sent = state.setdefault("rows", {})
 
     cutoff = detail_from()
+    by_folder = load_history(history_path(p, cfg))  # months already folded into totals on this Mac
     todo, history = [], defaultdict(lambda: [0.0, 0, 0])
     for r in ledger:
+        if (r.get("user") or cfg["user"]) != cfg["user"]:
+            continue  # someone else's line (an old shared-folder leftover): their own tracker sends it
         month = f"{local(ts(r['created_at'])):%Y-%m}"
         proj = project_of(r["folder"], projects)
         if month < cutoff:
-            h = history[(month, proj)]
-            h[0] += float(r["credits"])
-            if r.get("action") == "spend":
-                kind = r.get("kind") or kind_of("", r["model"])
-                h[1] += kind == "video"
-                h[2] += kind == "image"
+            fold(by_folder, r)  # not folded yet: counted in the totals below
             continue
         key = f"{r.get('user') or cfg['user']}|{r['created_at']}|{r['model']}|{r['action']}"
         if sent.get(key) == proj:
@@ -363,6 +406,11 @@ def _push(cfg, p, everything=False):
     ads = [{"month": m, "project": proj, "count": n}
            for (m, proj), n in sorted(count_finished_ads(p, projects, only_user=cfg["user"]).items())]
 
+    for (month, folder), (c, v, i) in by_folder.items():
+        h = history[(month, project_of(folder, projects))]
+        h[0] += c
+        h[1] += v
+        h[2] += i
     hist = [{"month": m, "project": proj, "credits": round(c, 2), "clips": v, "images": i}
             for (m, proj), (c, v, i) in sorted(history.items())]
 
@@ -384,6 +432,7 @@ def _push(cfg, p, everything=False):
         send([], True)
         state["ads"], state["history"], state["cutoff"] = ads, hist, cutoff
         json.dump(state, open(PUSHED_PATH, "w"))
+        compact(cfg, p, cutoff)  # the sheet has the totals now, so this Mac can let the detail go
     if todo:
         print(f"Sent {len(todo)} line(s) to the team sheet.")
 
@@ -612,6 +661,9 @@ def cmd_report(cfg, p, a):
     month = a.month or f"{local(now()):%Y-%m}"
     rows = [r for r in rows if f"{local(ts(r['created_at'])):%Y-%m}" == month]
     if not rows:
+        if cfg.get("endpoint") and month < detail_from():
+            sys.exit(f"{month} is older than two months, so it is kept as monthly totals in the team sheet "
+                     f"(the Summary and Month totals tabs), not here.")
         sys.exit(f"Nothing recorded for {month}.")
     for r in rows:
         r["_project"] = project_of(r["folder"], projects)

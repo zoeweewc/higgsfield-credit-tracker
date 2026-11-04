@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 HOME = os.path.expanduser("~")
 CONFIG_PATH = os.path.join(HOME, ".higgsfield-credits", "config.json")
 DEFAULT_LEDGER_DIR = os.path.join(HOME, "Higgsfield Credits")
-LEDGER_FIELDS = ["created_at", "model", "credits", "action", "kind", "folder", "session_id", "session_title", "user"]
+LEDGER_FIELDS = ["created_at", "model", "credits", "action", "kind", "folder", "session_id", "session_title", "user", "ad"]
 
 # Tools that cost credits are matched by name; read-only tools never charge.
 SPEND_TOOL = re.compile(r"__(generate_|upscale_|outpaint_|remove_background|reframe|voice_change|dubbing|"
@@ -154,8 +154,22 @@ def cmd_hook_post(cfg, p):
     rec = {"at": now().isoformat(timespec="seconds"), "tool": tool.split("__")[-1],
            "models": models, "folder": event.get("cwd", ""), "session_id": event.get("session_id", ""),
            "user": cfg["user"], "priced": False}
+    state = load_active()
+    ad = state["folders"].get(os.path.realpath(rec["folder"])) if rec["folder"] else None
+    if ad:
+        rec["ad"] = ad
     with open(call_file(p, rec["session_id"]), "a") as f:
         f.write(json.dumps(rec) + "\n")
+    if not ad and rec["session_id"] not in state["reminded"]:  # once per chat, never on every clip
+        state["reminded"][rec["session_id"]] = now().isoformat(timespec="seconds")
+        save_active(state)
+        script = os.path.abspath(__file__)
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": (
+            "No ad is open in this folder, so this generation's credits are not tied to any ad. If it is for an "
+            "ad, ask the user for the ad's name (the client's name for it, if there is one) and its style "
+            "(Animated, AI UGC, Cinematic or Hypermotion), then run: "
+            f"python3 \"{script}\" ad-start --name \"<name>\" --style \"<style>\". "
+            "If it is not for an ad (a test, a reference image), ignore this.")}}))
 
 
 def cmd_hook_stop(cfg, p):
@@ -266,10 +280,22 @@ def match_charges(cfg, p, charges):
                       "credits": f"{-float(t['credits']):.2f}", "action": t["action"],
                       "kind": kind_of(call.get("tool"), t["display_name"]),
                       "folder": call["folder"], "session_id": call["session_id"],
-                      "session_title": call.get("session_title", ""), "user": call.get("user", cfg["user"])})
+                      "session_title": call.get("session_title", ""), "user": call.get("user", cfg["user"]),
+                      "ad": call.get("ad", "")})
 
     if added:
         write_ledger(p, ledger + added)
+    tagged = [r for r in added if r.get("ad")]
+    if tagged:  # the ad's running cost lives in its own record, so it survives old lines being folded away
+        ads = load_ads(p, cfg["user"])
+        for r in tagged:
+            ad = find_ad(ads, r["folder"], r["ad"])
+            if ad:
+                ad["credits"] += float(r["credits"])
+                if r["action"] == "spend":
+                    ad["clips"] += r["kind"] == "video"
+                    ad["images"] += r["kind"] == "image"
+        save_ads(p, cfg["user"], ads)
     # mark priced calls so the Stop hook stops asking
     by_session = defaultdict(list)
     for c in calls:
@@ -403,8 +429,7 @@ def _push(cfg, p, everything=False):
                                  "model": r["model"], "credits": r["credits"],
                                  "kind": r.get("kind") or kind_of("", r["model"]),  # older rows were saved without one
                                  "project": proj, "folder": r["folder"]}))
-    ads = [{"month": m, "project": proj, "count": n}
-           for (m, proj), n in sorted(count_finished_ads(p, projects, only_user=cfg["user"]).items())]
+    ads = ads_payload(p, projects, cfg["user"])
 
     for (month, folder), (c, v, i) in by_folder.items():
         h = history[(month, project_of(folder, projects))]
@@ -448,59 +473,206 @@ def cmd_push(cfg, p, a):
 
 # ---------------------------------------------------------------- projects / reports
 
-# A finished ad is recorded when someone says so (see `finished`), not guessed from files.
-# One ad is one name in one folder, however many clips went into it.
+# An ad is opened when it starts (`ad-start`): its name, project, style, and from then on every credit
+# spent in that folder. It is closed with `finished`. One ad is one name in one folder, however many
+# clips went into it, and each hook variant is its own ad.
 
-def finished_files(p, only_user=None):
+STYLES = ("Animated", "AI UGC", "Cinematic", "Hypermotion")
+AD_FIELDS = ["name", "folder", "style", "started_at", "finished_at", "credits", "clips", "images", "user"]
+ACTIVE_PATH = os.path.join(os.path.dirname(CONFIG_PATH), "active.json")
+
+
+def style_of(text):
+    n = re.sub(r"[^a-z]", "", (text or "").lower())
+    if "ugc" in n:
+        return "AI UGC"
+    if "anim" in n:
+        return "Animated"
+    if "cinem" in n:
+        return "Cinematic"
+    if "hyper" in n:
+        return "Hypermotion"
+    return None
+
+
+def ads_files(p, only_user=None):
     out = []
     for fn in sorted(os.listdir(p["dir"])):
-        if fn.startswith("finished-") and fn.endswith(".csv"):
-            who = fn[len("finished-"):-len(".csv")]
+        if fn.startswith("ads-") and fn.endswith(".csv"):
+            who = fn[len("ads-"):-len(".csv")]
             if only_user is None or who == only_user:
                 out.append((who, os.path.join(p["dir"], fn)))
     return out
 
 
-def count_finished_ads(p, projects, rows=None, only_user=None):
-    """Finished ads per (month, project), from what was recorded with `finished`."""
-    counts, seen = defaultdict(int), set()
-    for who, fn in finished_files(p, only_user):
-        with open(fn, newline="", encoding="utf-8") as f:
-            for r in csv.DictReader(f):
-                key = (who, r["folder"], r["name"].strip().lower())
-                if key in seen:
-                    continue  # the same ad marked twice is still one ad
-                seen.add(key)
-                counts[(f"{local(ts(r['created_at'])):%Y-%m}", project_of(r["folder"], projects))] += 1
-    return counts
-
-
-def cmd_finished(cfg, p, a):
-    fn = os.path.join(p["dir"], f"finished-{cfg['user']}.csv")
+def load_ads(p, user):
+    fn = os.path.join(p["dir"], f"ads-{user}.csv")
     rows = []
     if os.path.exists(fn):
         with open(fn, newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-    folder = a.folder or os.getcwd()
-    name = a.name.strip()
-    if a.remove:
-        kept = [r for r in rows if not (r["name"].strip().lower() == name.lower() and r["folder"] == folder)]
-        print(f'Removed "{name}".' if len(kept) < len(rows) else f'No finished ad called "{name}" in this folder.')
-        rows = kept
-    elif any(r["name"].strip().lower() == name.lower() and r["folder"] == folder for r in rows):
-        print(f'"{name}" is already counted as a finished ad. Nothing added.')
-        return
-    else:
-        rows.append({"created_at": now().isoformat(timespec="seconds"), "name": name,
-                     "folder": folder, "user": cfg["user"]})
-        project = project_of(folder, load_projects(p))
-        print(f'Counted as a finished ad: "{name}" - {project if project != "?" else "no project yet"}.')
-    with open(fn, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["created_at", "name", "folder", "user"])
+            for r in csv.DictReader(f):
+                r["credits"], r["clips"], r["images"] = float(r["credits"] or 0), int(r["clips"] or 0), int(r["images"] or 0)
+                rows.append(r)
+    return rows
+
+
+def save_ads(p, user, rows):
+    with open(os.path.join(p["dir"], f"ads-{user}.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=AD_FIELDS)
         w.writeheader()
-        w.writerows(rows)
+        for r in rows:
+            w.writerow({**r, "credits": f"{r['credits']:.2f}"})
+
+
+def same_folder(a, b):
+    """The same folder can be written two ways (a shortcut, a symlink); compare where they really point."""
+    return a == b or os.path.realpath(a) == os.path.realpath(b)
+
+
+def where():
+    """The folder this command was run from, as the shell sees it."""
+    return os.environ.get("PWD") or os.getcwd()
+
+
+def find_ad(rows, folder, name):
+    for r in rows:
+        if r["name"].strip().lower() == name.strip().lower() and same_folder(r["folder"], folder):
+            return r
+    return None
+
+
+def load_active():
+    """Which ad is open in which folder, and which chats have already been nudged. Local to this Mac."""
+    state = {"folders": {}, "reminded": {}}
+    if os.path.exists(ACTIVE_PATH):
+        try:
+            state.update(json.load(open(ACTIVE_PATH)))
+        except ValueError:
+            pass
+    return state
+
+
+def save_active(state):
+    cutoff = (now() - timedelta(days=30)).isoformat(timespec="seconds")
+    state["reminded"] = {k: v for k, v in state["reminded"].items() if v >= cutoff}
+    os.makedirs(os.path.dirname(ACTIVE_PATH), exist_ok=True)
+    json.dump(state, open(ACTIVE_PATH, "w"))
+
+
+def count_finished_ads(p, projects, rows=None, only_user=None):
+    """Finished ads per (month finished, project)."""
+    counts = defaultdict(int)
+    for _, fn in ads_files(p, only_user):
+        who = os.path.basename(fn)[len("ads-"):-len(".csv")]
+        for ad in load_ads(p, who):
+            if ad["finished_at"]:
+                counts[(f"{local(ts(ad['finished_at'])):%Y-%m}", project_of(ad["folder"], projects))] += 1
+    return counts
+
+
+def ads_payload(p, projects, user):
+    out = []
+    for ad in load_ads(p, user):
+        done = bool(ad["finished_at"])
+        out.append({"month": f"{local(ts(ad['finished_at'] or ad['started_at'])):%Y-%m}", "name": ad["name"],
+                    "project": project_of(ad["folder"], projects), "style": ad["style"],
+                    "credits": round(ad["credits"], 2), "clips": ad["clips"], "images": ad["images"],
+                    "status": "Finished" if done else "In progress"})
+    return out
+
+
+def cmd_ad_start(cfg, p, a):
+    folder, name = a.folder or where(), a.name.strip()
+    style = style_of(a.style) if a.style else None
+    if a.style and not style:
+        sys.exit(f"The style must be one of: {', '.join(STYLES)}.")
+    rows = load_ads(p, cfg["user"])
+    ad = find_ad(rows, folder, name)
+    if ad is None:
+        if not style:
+            sys.exit("A new ad needs a style: " + ", ".join(STYLES) + ". Ask the user which one.")
+        ad = {"name": name, "folder": folder, "style": style, "started_at": now().isoformat(timespec="seconds"),
+              "finished_at": "", "credits": 0.0, "clips": 0, "images": 0, "user": cfg["user"]}
+        rows.append(ad)
+        verb = "Started"
+    else:
+        if style:
+            ad["style"] = style
+        verb = "Resumed"
+    save_ads(p, cfg["user"], rows)
+    state = load_active()
+    state["folders"][os.path.realpath(folder)] = ad["name"]
+    save_active(state)
+    project = project_of(folder, load_projects(p))
+    print(f'{verb} ad "{ad["name"]}" - {project if project != "?" else "no project yet"}, {ad["style"] or "no style yet"}. '
+          f"Every credit spent in this folder now counts to it ({ad['credits']:,.2f} so far).")
+    push_new(cfg, p)
+
+
+def cmd_finished(cfg, p, a):
+    folder, name = a.folder or where(), a.name.strip()
+    style = style_of(a.style) if a.style else None
+    if a.style and not style:
+        sys.exit(f"The style must be one of: {', '.join(STYLES)}.")
+    rows = load_ads(p, cfg["user"])
+    ad = find_ad(rows, folder, name)
+    if a.remove:
+        if not (ad and ad["finished_at"]):
+            print(f'"{name}" is not counted as finished in this folder.')
+            return
+        ad["finished_at"] = ""
+        print(f'"{name}" is no longer counted as finished.')
+    else:
+        if ad is None:  # finished without ever being opened: counted, but its cost was not tracked
+            ad = {"name": name, "folder": folder, "style": "", "started_at": now().isoformat(timespec="seconds"),
+                  "finished_at": "", "credits": 0.0, "clips": 0, "images": 0, "user": cfg["user"]}
+            rows.append(ad)
+        elif ad["finished_at"]:
+            print(f'"{name}" is already counted as finished. Nothing added.')
+            return
+        if style:
+            ad["style"] = style
+        ad["finished_at"] = now().isoformat(timespec="seconds")
+        state = load_active()
+        key = os.path.realpath(folder)
+        if state["folders"].get(key, "").lower() == name.lower():
+            del state["folders"][key]
+            save_active(state)
+        project = project_of(folder, load_projects(p))
+        print(f'Finished: "{name}" - {project if project != "?" else "no project yet"}, '
+              f'{ad["style"] or "no style recorded"}, {ad["credits"]:,.2f} credits.'
+              + ("" if ad["credits"] or ad["style"] else " (This ad was never opened, so its cost was not tracked.)")
+              + ("" if ad["style"] else " Ask the user its style and run finished again with --style."))
+    save_ads(p, cfg["user"], rows)
     build_workbook(p)
     push_new(cfg, p)
+
+
+def cmd_ads(cfg, p, a):
+    ads = [ad for who, _ in ads_files(p) for ad in load_ads(p, who)]
+    if a.month:
+        ads = [ad for ad in ads if f"{local(ts(ad['finished_at'] or ad['started_at'])):%Y-%m}" == a.month]
+    if not ads:
+        sys.exit("No ads recorded" + (f" for {a.month}." if a.month else "."))
+    projects = load_projects(p)
+    done = [ad for ad in ads if ad["finished_at"]]
+    print("Cost per finished ad, by style" + (f" - {a.month}" if a.month else "") + "\n")
+    print("| Style | Finished ads | In progress | Credits on finished ads | Credits per ad |")
+    print("|---|---:|---:|---:|---:|")
+    for st in list(STYLES) + [""]:
+        f = [ad for ad in done if ad["style"] == st]
+        o = [ad for ad in ads if not ad["finished_at"] and ad["style"] == st]
+        if not f and not o:
+            continue
+        c = sum(ad["credits"] for ad in f)
+        print(f"| {st or '(no style)'} | {len(f)} | {len(o)} | {c:,.2f} | {c / len(f):,.2f} |" if f
+              else f"| {st or '(no style)'} | 0 | {len(o)} | 0.00 | - |")
+    print("\n| Ad | Project | Style | Credits | Clips | Images | Status |\n|---|---|---|---:|---:|---:|---|")
+    for ad in sorted(ads, key=lambda x: -x["credits"]):
+        proj = project_of(ad["folder"], projects)
+        print(f"| {ad['name']} | {proj if proj != '?' else '(needs project)'} | {ad['style'] or '-'} | "
+              f"{ad['credits']:,.2f} | {ad['clips']} | {ad['images']} | "
+              f"{'Finished' if ad['finished_at'] else 'In progress'} |")
 
 
 def build_workbook(p):
@@ -822,8 +994,11 @@ def main():
     s = sub.add_parser("backfill"); s.add_argument("--since", help="YYYY-MM-DD, default the 1st of this month")
     sub.add_parser("workbook")
     s = sub.add_parser("push"); s.add_argument("--all", action="store_true", help="resend everything, not just what's new")
+    s = sub.add_parser("ad-start", help="open an ad: from now on its credits are counted")
+    s.add_argument("--name", required=True); s.add_argument("--style"); s.add_argument("--folder", help="default: the folder you are in")
     s = sub.add_parser("finished", help="count one finished ad"); s.add_argument("--name", required=True)
-    s.add_argument("--folder", help="default: the folder you are in"); s.add_argument("--remove", action="store_true")
+    s.add_argument("--style"); s.add_argument("--folder", help="default: the folder you are in"); s.add_argument("--remove", action="store_true")
+    s = sub.add_parser("ads", help="cost per ad and per style"); s.add_argument("--month")
     a = ap.parse_args()
 
     cfg = load_config()
@@ -846,8 +1021,12 @@ def main():
         build_workbook(p)
     elif a.cmd == "push":
         cmd_push(cfg, p, a)
+    elif a.cmd == "ad-start":
+        cmd_ad_start(cfg, p, a)
     elif a.cmd == "finished":
         cmd_finished(cfg, p, a)
+    elif a.cmd == "ads":
+        cmd_ads(cfg, p, a)
 
 
 if __name__ == "__main__":

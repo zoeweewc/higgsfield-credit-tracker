@@ -1,6 +1,6 @@
 ---
 name: higgsfield-credits
-description: Record and report Higgsfield credit spend per project, and count finished ads. Use whenever Higgsfield MCP generations have just run and need costing, when the Stop hook asks for a sync, when the user asks what they or the team have spent this month, when the user says which project a folder belongs to, or when the user asks to compile, assemble, export or finalise a video for use, or says an IG BOMB video has been posted.
+description: Record and report Higgsfield credit spend per project, and track what each ad costs. Use whenever Higgsfield MCP generations have just run and need costing, when the Stop hook asks for a sync, when a hook says no ad is open, when the user starts a new ad or video, when the user asks what they or the team have spent or what an ad or a style costs, when the user says which project a folder belongs to, or when the user asks to compile, assemble, export or finalise a video for use, or says an IG BOMB video has been posted.
 ---
 
 # Higgsfield credit tracking
@@ -42,24 +42,47 @@ The table shows credits, how many clips and images were generated (refunds exclu
 many **finished ads** were counted. Give it in chat, plus one line on what stands out. Don't save
 reports as files unless asked.
 
-## Counting a finished ad
+## Tracking what each ad costs
 
-A finished ad is not a clip and not a file in a folder. One ad is one ad, however many clips went
-into it. Count it by running, from the folder this chat is working in:
+An ad is opened when it **starts**. From then on every credit spent in that folder is counted to it
+automatically, retries and rejected takes included. Credits spent before an ad was opened are not
+worked out backwards.
 
-`python3 <script> finished --name "<short name of the ad>"`
+**Start every ad before its first clip.** Run, from the folder this chat is working in:
 
-When to run it:
-- **Whenever the user asks you to compile, assemble, export or finalise a video for use.** That is
-  the moment the ad exists. Run it once the compile is done.
-- **IG BOMB:** count it when the user says the video has been **posted**, not when it is compiled.
-- **Every other project:** use your judgement. Count a cut that is meant to be used or delivered.
-  Don't count drafts, tests, previews or a re-export of an ad already counted. If you can't tell,
-  ask the user in one line.
+`python3 <script> ad-start --name "<ad name>" --style "<style>"`
 
-Use the same name for the same ad, so marking it twice never counts it twice. If you counted
-something by mistake, undo it with `finished --name "<name>" --remove`. Tell the user in one line
-what you counted.
+- **Name:** whatever the user or the client calls the ad. Don't invent one. If you don't know it, ask.
+- **Style:** one of **Animated, AI UGC, Cinematic, Hypermotion**. Pick the closest from what is being
+  made. If you are not sure, ask the user in one line. Never leave it blank.
+- **Project** comes from the folder. Don't ask for it.
+- **Each hook variant is its own ad**, with its own name and its own `ad-start`.
+- Starting a second ad in the same folder moves the counting to it. Start it before its first clip.
+- **Continuing an ad in a new chat:** run `ad-start --name "<same name>"` (no style needed) and the
+  cost carries on from where it was.
+- If a hook says *no ad is open*, and the generation is for an ad, ask for the name and style and run
+  `ad-start`. If it is a test or a reference image, ignore it.
+
+**Finish it** when it exists as a finished ad:
+
+`python3 <script> finished --name "<ad name>"`
+
+- **Whenever the user asks you to compile, assemble, export or finalise a video for use.** Run it once
+  the compile is done.
+- **IG BOMB:** finished means **posted**. Run it when the user says it has been posted, not when it is
+  compiled.
+- **Every other project:** use your judgement. A cut meant to be used or delivered is finished. Drafts,
+  tests, previews and a re-export of an ad already finished are not. If you can't tell, ask in one line.
+- If the ad was never opened with `ad-start`, finishing it still counts it but its cost was not
+  tracked, and the command says so. Add `--style "<style>"` if it has none.
+- If something was marked finished by mistake: `finished --name "<name>" --remove`.
+
+Tell the user in one line what you started or finished and what it has cost so far.
+
+**To answer "what does an ad cost" or "which style is worth it":** run `python3 <script> ads`
+(add `--month 2026-11` for one month). It shows credits per finished ad by style, and every ad with
+its cost. Give the table in chat plus one line on what stands out, such as the cheapest and the most
+expensive style.
 
 ## Renaming or merging projects
 

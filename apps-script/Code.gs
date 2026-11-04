@@ -5,10 +5,11 @@
 const SECRET = 'REPLACE-ME';
 
 const SEP = '\u0001'; // joins parts of an internal key; cannot appear in a project name
-const LEDGER = 'Ledger', ADS = 'Finished ads', NAMES = 'Project names', HISTORY = 'History';
-const TEXT_COLS = { 'Ledger': 3, 'Finished ads': 2, 'Project names': 3, 'History': 3 };
+const LEDGER = 'Ledger', ADS = 'Ads', NAMES = 'Project names', HISTORY = 'History';
+const TEXT_COLS = { 'Ledger': 3, 'Ads': 2, 'Project names': 3, 'History': 3 };
 const LEDGER_HEAD = ['Key', 'Month', 'Date', 'Person', 'Model', 'Credits', 'Kind', 'Their project', 'Folder'];
-const ADS_HEAD = ['Key', 'Month', 'Person', 'Their project', 'Finished ads'];
+const ADS_HEAD = ['Key', 'Month', 'Person', 'Ad', 'Project', 'Style', 'Credits', 'Clips made', 'Images made', 'Status'];
+const STYLES = ['Animated', 'AI UGC', 'Cinematic', 'Hypermotion'];
 const HISTORY_HEAD = ['Key', 'Month', 'Person', 'Their project', 'Credits', 'Clips made', 'Images made'];
 const NAMES_HEAD = ['Person', 'Their project name', 'Team project name (type yours here)'];
 
@@ -22,8 +23,9 @@ function doPost(e) {
     const rows = body.rows || [], ads = body.ads || [];
     upsert(sheetOf(ss, LEDGER, LEDGER_HEAD), rows.map(r =>
       [r.key, r.month, r.created_at, r.user, r.model, Number(r.credits), r.kind, r.project, r.folder]), 7);
-    // finished ads arrive as a person's complete current counts, so they replace that person's
-    // old lines; otherwise a renamed project would be counted under both its names
+    // a person's ads arrive as their complete current list (name, project, style, credits spent on
+    // it, finished or not), so they replace that person's old lines; otherwise a renamed project
+    // would show an ad under both its names
     if (body.snapshot) {
       replaceAds(sheetOf(ss, ADS, ADS_HEAD), body.user, ads);
       // Months before `cutoff` are kept as one small line per project instead of one per charge, so
@@ -45,7 +47,8 @@ function doPost(e) {
 
 function replaceAds(sh, user, ads) {
   const keep = body(sh).filter(r => r[2] !== user);
-  const mine = ads.map(a => [user + '|' + a.month + '|' + a.project, a.month, user, a.project, Number(a.count)]);
+  const mine = ads.map(a => [user + '|' + a.month + '|' + a.name + '|' + a.project, a.month, user, a.name,
+                             a.project, a.style || '', Number(a.credits), Number(a.clips), Number(a.images), a.status]);
   const grid = [ADS_HEAD].concat(keep, mine);
   sh.clear();
   sh.getRange(1, 1, sh.getMaxRows(), 2).setNumberFormat('@');
@@ -127,7 +130,7 @@ function refresh(ss) {
   body(namesSheet).forEach(r => { if (r[0]) names.set(r[0] + SEP + r[1], String(r[2] || '').trim()); });
   const pairs = new Set();
   ledger.forEach(r => pairs.add(r[3] + SEP + r[7]));
-  ads.forEach(r => pairs.add(r[2] + SEP + r[3]));
+  ads.forEach(r => pairs.add(r[2] + SEP + r[4]));
   history.forEach(r => pairs.add(r[2] + SEP + r[3]));
   const added = [...pairs].filter(k => !names.has(k)).sort().map(k => k.split(SEP).concat(['']));
   if (added.length) namesSheet.getRange(namesSheet.getLastRow() + 1, 1, added.length, 3).setValues(added);
@@ -147,10 +150,9 @@ function refresh(ss) {
     bump(byProject, r[1] + SEP + team(r[2], r[3]), add);
     bump(byPerson, r[1] + SEP + r[2], add);
   });
-  ads.forEach(r => {
-    const n = Number(r[4]);
-    bump(byProject, r[1] + SEP + team(r[2], r[3]), t => { t[3] += n; });
-    bump(byPerson, r[1] + SEP + r[2], t => { t[3] += n; });
+  ads.filter(r => r[9] === 'Finished').forEach(r => {
+    bump(byProject, r[1] + SEP + team(r[2], r[4]), t => { t[3]++; });
+    bump(byPerson, r[1] + SEP + r[2], t => { t[3]++; });
   });
 
   const table = (map, head) => {
@@ -173,15 +175,37 @@ function refresh(ss) {
   const width = Math.max(...totalsGrid.map(r => r.length));
   totalsGrid.forEach(r => { while (r.length < width) r.push(''); });
 
+  // cost per finished ad, by style: the table that says which styles are worth making
+  const styleOf = r => r[5] || '(no style)';
+  const order = s => { const i = STYLES.indexOf(s); return i < 0 ? STYLES.length : i; };
+  const done = ads.filter(r => r[9] === 'Finished');
+  const stats = rows => ({ n: rows.length, credits: rows.reduce((a, r) => a + Number(r[6]), 0), clips: rows.reduce((a, r) => a + Number(r[7]), 0) });
+  const styleNames = [...new Set(ads.map(styleOf).concat(STYLES))].sort((a, b) => order(a) - order(b) || (a < b ? -1 : 1));
+  const styleRows = [['Style', 'Finished ads', 'In progress', 'Credits on finished ads', 'Credits per ad', 'Clips per ad']];
+  styleNames.forEach(st => {
+    const f = stats(done.filter(r => styleOf(r) === st)), open = ads.filter(r => r[9] !== 'Finished' && styleOf(r) === st).length;
+    if (f.n || open || STYLES.indexOf(st) >= 0)
+      styleRows.push([st, f.n, open, round(f.credits), f.n ? round(f.credits / f.n) : '', f.n ? round(f.clips / f.n) : '']);
+  });
+  const byMonthStyle = new Map();
+  done.forEach(r => { const k = r[1] + SEP + styleOf(r); if (!byMonthStyle.has(k)) byMonthStyle.set(k, []); byMonthStyle.get(k).push(r); });
+  const monthStyle = [...byMonthStyle.entries()].map(([k, rows]) => [...k.split(SEP), stats(rows)])
+    .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : order(a[1]) - order(b[1])))
+    .map(([m, st, x]) => [m, st, x.n, round(x.credits), round(x.credits / x.n)]);
+  const styleGrid = styleRows.concat([[], ['By month']], [['Month', 'Style', 'Finished ads', 'Credits', 'Credits per ad']], monthStyle);
+  const styleWidth = Math.max(...styleGrid.map(r => r.length));
+  styleGrid.forEach(r => { while (r.length < styleWidth) r.push(''); });
+  write(ss, 'By style', styleGrid);
+
   write(ss, 'Month totals', totalsGrid);
   write(ss, 'Summary', table(byProject, ['Month', 'Project', 'Credits', 'Clips made', 'Images made', 'Finished ads']));
   write(ss, 'By person', table(byPerson, ['Month', 'Person', 'Credits', 'Clips made', 'Images made', 'Finished ads']));
-  style(ss, monthRows.length, matrix.length, projects.length);
+  style(ss, monthRows.length, matrix.length, projects.length, styleRows.length, monthStyle.length);
 }
 
 // Colour and a chart, to make the months easy to read at a glance. This is decoration only, so a
 // failure here must never stop the numbers from being saved.
-function style(ss, totalRows, matrixRows, projectCount) {
+function style(ss, totalRows, matrixRows, projectCount, styleRows, monthStyleRows) {
   try {
     const TINTS = ['#e8f0fe', '#fff4e0'];
     ['Summary', 'By person'].forEach(name => {
@@ -206,6 +230,23 @@ function style(ss, totalRows, matrixRows, projectCount) {
       sh.setColumnWidth(2, 180);
       sh.autoResizeColumns(3, cols - 2);
     });
+
+    // cheap ads are green, expensive ones red, so the cost of each style stands out
+    const bs = ss.getSheetByName('By style');
+    bs.getRange(1, 1, 1, 6).setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+    bs.getRange(styleRows + 2, 1).setFontWeight('bold').setFontSize(12);
+    bs.getRange(styleRows + 3, 1, 1, 5).setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
+    bs.getRange(2, 4, styleRows - 1, 3).setNumberFormat('#,##0.00');
+    const spread = rng => SpreadsheetApp.newConditionalFormatRule().setGradientMinpoint('#57bb8a')
+      .setGradientMidpointWithValue('#ffffff', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMaxpoint('#e67c73').setRanges([rng]).build();
+    const rules = [spread(bs.getRange(2, 5, styleRows - 1, 1))];
+    if (monthStyleRows > 0) {
+      bs.getRange(styleRows + 4, 4, monthStyleRows, 2).setNumberFormat('#,##0.00');
+      rules.push(spread(bs.getRange(styleRows + 4, 5, monthStyleRows, 1)));
+    }
+    bs.setConditionalFormatRules(rules);
+    bs.autoResizeColumns(1, 6);
 
     const mt = ss.getSheetByName('Month totals');
     mt.getRange(1, 1, 1, 5).setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');

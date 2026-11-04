@@ -339,7 +339,8 @@ def _push(cfg, p, everything=False):
             continue  # the sheet already has this row under this project name
         todo.append((key, proj, {"key": key, "month": f"{local(ts(r['created_at'])):%Y-%m}",
                                  "created_at": r["created_at"], "user": r.get("user") or cfg["user"],
-                                 "model": r["model"], "credits": r["credits"], "kind": r.get("kind") or "",
+                                 "model": r["model"], "credits": r["credits"],
+                                 "kind": r.get("kind") or kind_of("", r["model"]),  # older rows were saved without one
                                  "project": proj, "folder": r["folder"]}))
     ads = [{"month": m, "project": proj, "count": n}
            for (m, proj), n in sorted(count_finished_ads(p, projects, ledger).items())]

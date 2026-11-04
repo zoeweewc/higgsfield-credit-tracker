@@ -39,7 +39,7 @@ If `sync` says generations are still unpriced, fetch the next `transactions` pag
 - Also write a spreadsheet file for the Google Sheet: add `--csv`
 
 The table shows credits, how many clips and images were generated (refunds excluded), and how
-many **finished ads** were counted. Give it in chat, plus one line on what stands out. Don't save
+many **finished videos** were counted. Give it in chat, plus one line on what stands out. Don't save
 reports as files unless asked.
 
 ## Tracking what each finished video costs

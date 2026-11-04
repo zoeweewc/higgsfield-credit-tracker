@@ -61,12 +61,12 @@ One Google Sheet, filled in automatically. Nobody else needs access to it.
 
 | Tab | What it is |
 |---|---|
-| **Summary** | Each month, by project: credits, clips made, images made, finished ads. Each month has its own colour band, and the heaviest spend is shaded green. |
+| **Summary** | Each month, by project: credits, clips made, images made, finished videos. Each month has its own colour band, and the heaviest spend is shaded green. |
 | **By person** | Each month, by person |
 | **Month totals** | One line per month, then credits by project month by month, with a stacked chart |
 | **Project names** | Everyone's project names, each with an empty box. Type your own team name for a project and every total uses it. This is how `Reeve` and `Reeve Ads` from two people become one project. |
-| **Ads** | Every ad: name, project, style, credits spent on it, clips, images, and whether it is finished or still in progress |
-| **By style** | The table that matters: finished ads, credits and **credits per ad** for Animated, AI UGC, Cinematic and Hypermotion, then the same month by month. Cheap is green, expensive is red. |
+| **Final videos** | Every video: name, project, style, credits spent on it, clips, images, and whether it is finished or still in progress |
+| **By style** | The table that matters: finished videos, credits and **credits per video** for Animated, AI UGC, Cinematic and Hypermotion, then the same month by month. Cheap is green, expensive is red. |
 | **Ledger**, **History** | What the totals are built from. Leave these alone. The Ledger holds every charge for this month and last month. Older months are squeezed into **History**, one short line per person and project, so the sheet never grows without limit. The totals do not change when this happens. |
 
 **Credits** menu → **Refresh summary** rebuilds the totals after you edit *Project names*. It also
@@ -118,7 +118,7 @@ Credits spent when no video is open still count to the project, just not to a vi
 made over several chats, Claude picks it up again by name and the cost carries on.
 
 Ask Claude *"which style costs the most per video?"* or open the **By style** tab in the team sheet.
-(The sheet's tabs and the commands still say "Ads" and `ad-start`; they mean finished videos.)
+(The commands Claude runs are still called `ad-start` and `finished`; they mean a video.)
 
 One limit: a charge is matched to its clip by timing, so a clip generated within a few seconds of
 another can occasionally have its cost land on its neighbour.

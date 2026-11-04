@@ -609,7 +609,7 @@ def save_active(state):
 
 
 def count_finished_ads(p, projects, rows=None, only_user=None):
-    """Finished ads per (month finished, project)."""
+    """Finished videos per (month finished, project)."""
     counts = defaultdict(int)
     for _, fn in ads_files(p, only_user):
         who = os.path.basename(fn)[len("ads-"):-len(".csv")]
@@ -702,11 +702,11 @@ def cmd_ads(cfg, p, a):
     if a.month:
         ads = [ad for ad in ads if f"{local(ts(ad['finished_at'] or ad['started_at'])):%Y-%m}" == a.month]
     if not ads:
-        sys.exit("No ads recorded" + (f" for {a.month}." if a.month else "."))
+        sys.exit("No videos recorded" + (f" for {a.month}." if a.month else "."))
     projects = load_projects(p)
     done = [ad for ad in ads if ad["finished_at"]]
-    print("Cost per finished ad, by style" + (f" - {a.month}" if a.month else "") + "\n")
-    print("| Style | Finished ads | In progress | Credits on finished ads | Credits per ad |")
+    print("Cost per finished video, by style" + (f" - {a.month}" if a.month else "") + "\n")
+    print("| Style | Finished videos | In progress | Credits on finished videos | Credits per video |")
     print("|---|---:|---:|---:|---:|")
     for st in list(STYLES) + [""]:
         f = [ad for ad in done if ad["style"] == st]
@@ -716,7 +716,7 @@ def cmd_ads(cfg, p, a):
         c = sum(ad["credits"] for ad in f)
         print(f"| {st or '(no style)'} | {len(f)} | {len(o)} | {c:,.2f} | {c / len(f):,.2f} |" if f
               else f"| {st or '(no style)'} | 0 | {len(o)} | 0.00 | - |")
-    print("\n| Ad | Project | Style | Credits | Clips | Images | Status |\n|---|---|---|---:|---:|---:|---|")
+    print("\n| Video | Project | Style | Credits | Clips | Images | Status |\n|---|---|---|---:|---:|---:|---|")
     for ad in sorted(ads, key=lambda x: -x["credits"]):
         proj = project_of(ad["folder"], projects)
         print(f"| {ad['name']} | {proj if proj != '?' else '(needs project)'} | {ad['style'] or '-'} | "
@@ -755,11 +755,11 @@ def build_workbook(p):
         m, who, proj = key
         summary.append([m, who, "(needs project)" if proj == "?" else proj, round(v, 2),
                         made[key][0], made[key][1]])
-    summary += [[], ["Finished ads delivered (files in each project's Final folder)"],
-                ["Month", "Project", "Finished ads"]]
+    summary += [[], ["Finished videos (files in each project's Final folder)"],
+                ["Month", "Project", "Finished videos"]]
     for (m, proj), n in sorted(ads.items()):
         summary.append([m, proj, n])
-    summary += [[], ["Month totals"], ["Month", "", "", "Credits", "Clips", "Images", "Finished ads"]]
+    summary += [[], ["Month totals"], ["Month", "", "", "Credits", "Clips", "Images", "Finished videos"]]
     for m in months:
         keys = [k for k in agg if k[0] == m]
         summary.append([m, "", "", round(sum(agg[k] for k in keys), 2),
@@ -865,7 +865,7 @@ def table(title, rows, key_name, projects):
     total = sum(agg.values())
     print(f"{title}\n")
     finished = rows[0].get("_ads") if rows else None
-    head = " Finished ads |" if finished is not None else ""
+    head = " Finished videos |" if finished is not None else ""
     print(f"| {key_name} | Credits | Clips made | Images made |{head} Share |")
     print("|---|---:|---:|---:|" + ("---:|" if finished is not None else "") + "---:|")
     for k, v in sorted(agg.items(), key=lambda kv: -kv[1]):

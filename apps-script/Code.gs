@@ -5,10 +5,10 @@
 const SECRET = 'REPLACE-ME';
 
 const SEP = '\u0001'; // joins parts of an internal key; cannot appear in a project name
-const LEDGER = 'Ledger', ADS = 'Ads', NAMES = 'Project names', HISTORY = 'History';
-const TEXT_COLS = { 'Ledger': 3, 'Ads': 2, 'Project names': 3, 'History': 3 };
+const LEDGER = 'Ledger', ADS = 'Final videos', NAMES = 'Project names', HISTORY = 'History';
+const TEXT_COLS = { 'Ledger': 3, 'Final videos': 2, 'Project names': 3, 'History': 3 };
 const LEDGER_HEAD = ['Key', 'Month', 'Date', 'Person', 'Model', 'Credits', 'Kind', 'Their project', 'Folder'];
-const ADS_HEAD = ['Key', 'Month', 'Person', 'Ad', 'Project', 'Style', 'Credits', 'Clips made', 'Images made', 'Status'];
+const ADS_HEAD = ['Key', 'Month', 'Person', 'Video', 'Project', 'Style', 'Credits', 'Clips made', 'Images made', 'Status'];
 const STYLES = ['Animated', 'AI UGC', 'Cinematic', 'Hypermotion'];
 const HISTORY_HEAD = ['Key', 'Month', 'Person', 'Their project', 'Credits', 'Clips made', 'Images made'];
 const NAMES_HEAD = ['Person', 'Their project name', 'Team project name (type yours here)'];
@@ -23,9 +23,9 @@ function doPost(e) {
     const rows = body.rows || [], ads = body.ads || [];
     upsert(sheetOf(ss, LEDGER, LEDGER_HEAD), rows.map(r =>
       [r.key, r.month, r.created_at, r.user, r.model, Number(r.credits), r.kind, r.project, r.folder]), 7);
-    // a person's ads arrive as their complete current list (name, project, style, credits spent on
+    // a person's videos arrive as their complete current list (name, project, style, credits spent on
     // it, finished or not), so they replace that person's old lines; otherwise a renamed project
-    // would show an ad under both its names
+    // would show a video under both its names
     if (body.snapshot) {
       replaceAds(sheetOf(ss, ADS, ADS_HEAD), body.user, ads);
       // Months before `cutoff` are kept as one small line per project instead of one per charge, so
@@ -119,7 +119,7 @@ function upsert(sh, rows, valueFrom) {
 }
 
 // Rebuild the read-only tabs from the Ledger (recent charges), History (older months, already
-// added up), Finished ads and Project names tabs.
+// added up), Final videos and Project names tabs.
 function refresh(ss) {
   const ledger = body(sheetOf(ss, LEDGER, LEDGER_HEAD)), ads = body(sheetOf(ss, ADS, ADS_HEAD));
   const history = body(sheetOf(ss, HISTORY, HISTORY_HEAD));
@@ -162,7 +162,7 @@ function refresh(ss) {
   };
   const months = new Map();
   byProject.forEach((t, k) => bump(months, k.split(SEP)[0], m => t.forEach((v, i) => { m[i] += v; })));
-  const monthRows = [['Month', 'Credits', 'Clips made', 'Images made', 'Finished ads']].concat(
+  const monthRows = [['Month', 'Credits', 'Clips made', 'Images made', 'Finished videos']].concat(
     [...months.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([m, t]) => [m].concat(t.map(round))));
 
   const projects = [...new Set([...byProject.keys()].map(k => k.split(SEP)[1]))];
@@ -175,13 +175,13 @@ function refresh(ss) {
   const width = Math.max(...totalsGrid.map(r => r.length));
   totalsGrid.forEach(r => { while (r.length < width) r.push(''); });
 
-  // cost per finished ad, by style: the table that says which styles are worth making
+  // cost per finished video, by style: the table that says which styles are worth making
   const styleOf = r => r[5] || '(no style)';
   const order = s => { const i = STYLES.indexOf(s); return i < 0 ? STYLES.length : i; };
   const done = ads.filter(r => r[9] === 'Finished');
   const stats = rows => ({ n: rows.length, credits: rows.reduce((a, r) => a + Number(r[6]), 0), clips: rows.reduce((a, r) => a + Number(r[7]), 0) });
   const styleNames = [...new Set(ads.map(styleOf).concat(STYLES))].sort((a, b) => order(a) - order(b) || (a < b ? -1 : 1));
-  const styleRows = [['Style', 'Finished ads', 'In progress', 'Credits on finished ads', 'Credits per ad', 'Clips per ad']];
+  const styleRows = [['Style', 'Finished videos', 'In progress', 'Credits on finished videos', 'Credits per video', 'Clips per video']];
   styleNames.forEach(st => {
     const f = stats(done.filter(r => styleOf(r) === st)), open = ads.filter(r => r[9] !== 'Finished' && styleOf(r) === st).length;
     if (f.n || open || STYLES.indexOf(st) >= 0)
@@ -192,14 +192,14 @@ function refresh(ss) {
   const monthStyle = [...byMonthStyle.entries()].map(([k, rows]) => [...k.split(SEP), stats(rows)])
     .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : order(a[1]) - order(b[1])))
     .map(([m, st, x]) => [m, st, x.n, round(x.credits), round(x.credits / x.n)]);
-  const styleGrid = styleRows.concat([[], ['By month']], [['Month', 'Style', 'Finished ads', 'Credits', 'Credits per ad']], monthStyle);
+  const styleGrid = styleRows.concat([[], ['By month']], [['Month', 'Style', 'Finished videos', 'Credits', 'Credits per video']], monthStyle);
   const styleWidth = Math.max(...styleGrid.map(r => r.length));
   styleGrid.forEach(r => { while (r.length < styleWidth) r.push(''); });
   write(ss, 'By style', styleGrid);
 
   write(ss, 'Month totals', totalsGrid);
-  write(ss, 'Summary', table(byProject, ['Month', 'Project', 'Credits', 'Clips made', 'Images made', 'Finished ads']));
-  write(ss, 'By person', table(byPerson, ['Month', 'Person', 'Credits', 'Clips made', 'Images made', 'Finished ads']));
+  write(ss, 'Summary', table(byProject, ['Month', 'Project', 'Credits', 'Clips made', 'Images made', 'Finished videos']));
+  write(ss, 'By person', table(byPerson, ['Month', 'Person', 'Credits', 'Clips made', 'Images made', 'Finished videos']));
   style(ss, monthRows.length, matrix.length, projects.length, styleRows.length, monthStyle.length);
 }
 
@@ -231,7 +231,7 @@ function style(ss, totalRows, matrixRows, projectCount, styleRows, monthStyleRow
       sh.autoResizeColumns(3, cols - 2);
     });
 
-    // cheap ads are green, expensive ones red, so the cost of each style stands out
+    // cheap videos are green, expensive ones red, so the cost of each style stands out
     const bs = ss.getSheetByName('By style');
     bs.getRange(1, 1, 1, 6).setBackground('#1a73e8').setFontColor('#ffffff').setFontWeight('bold');
     bs.getRange(styleRows + 2, 1).setFontWeight('bold').setFontSize(12);

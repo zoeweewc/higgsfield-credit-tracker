@@ -95,8 +95,8 @@ The point is to see which kinds of video are worth their credits.
 **When a new ad starts,** Claude opens it with four things: the **name** (whatever you or the client
 call it), the **project** (from the folder), the **style** (**Animated, AI UGC, Cinematic or
 Hypermotion**), and from then on the **total credits** spent on it, including retries and rejected
-takes. It asks you in one line if it doesn't know the name or isn't sure of the style. Each hook
-variant is its own ad with its own cost. Old ads are not worked out backwards.
+takes. It asks you in one line if it doesn't know the name or isn't sure of the style. **One ad is one piece of content:** every style version and language version of it shares the one
+ad, so their costs add up. A hook variant is its own ad. Old ads are not worked out backwards.
 
 **An ad is finished** when Claude is asked to compile a video for use, or, for IG BOMB, when you say
 it has been **posted**. For other projects Claude uses its judgement and asks if unsure. To undo one,

@@ -1,7 +1,7 @@
 {
   "name": "funnelduo-tools",
   "description": "FunnelDuo internal Claude Code plugins.",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "owner": { "name": "FunnelDuo", "url": "https://github.com/zoeweewc" },
   "plugins": [
     {

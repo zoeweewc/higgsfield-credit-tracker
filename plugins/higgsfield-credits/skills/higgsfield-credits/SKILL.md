@@ -56,7 +56,13 @@ worked out backwards.
 - **Style:** one of **Animated, AI UGC, Cinematic, Hypermotion**. Pick the closest from what is being
   made. If you are not sure, ask the user in one line. Never leave it blank.
 - **Project** comes from the folder. Don't ask for it.
-- **Each hook variant is its own ad**, with its own name and its own `ad-start`.
+- **One ad is one piece of content.** Every style version and every language version of the same
+  content is the same ad, so use the same name for all of them and their costs add up. For example a
+  reel built in clay, stickman and motion graphic, in Chinese and Malay, is one ad. Several chats can
+  each run `ad-start` with that same name.
+- **A hook variant** (same content, different first few seconds) is its own ad, with its own name.
+- **IG BOMB:** name the ad after the reel, the way the user calls it (for example `忘记名字`), and use
+  the style **Animated** for clay, stickman and motion graphic builds.
 - **Whenever you switch to a different ad, run `ad-start` for it before its next clip, including going
   back to an earlier ad in the same chat.** The tracker remembers one current ad per chat, so the
   command is what tells it which ad each clip is for. Other chats in the same folder don't affect yours.

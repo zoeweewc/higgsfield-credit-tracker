@@ -15,8 +15,11 @@ Files live in the ledger directory (config: ~/.higgsfield-credits/config.json):
   ledger-<user>.csv   this person's charges        (one per teammate, syncs via Drive)
   projects.csv        folder -> project, shared by the whole team
   calls/<id>.jsonl    raw call log per chat, kept for matching and auditing
+
+If `endpoint` and `secret` are in the config, every new charge is also sent to the team's
+Google Sheet (see apps-script/Code.gs), so nobody needs access to the team's Drive.
 """
-import argparse, csv, json, os, re, sys, time
+import argparse, csv, json, os, re, sys, time, urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -289,6 +292,86 @@ def match_charges(cfg, p, charges):
         print(f"\n{len(still)} generation(s) still unpriced - fetch more `transactions` pages and sync again.")
     build_workbook(p)
     prune_calls(p)
+    push_new(cfg, p)
+
+
+# ---------------------------------------------------------------- team sheet
+
+PUSH_CHUNK = 150
+PUSHED_PATH = os.path.join(os.path.dirname(CONFIG_PATH), "pushed.json")
+
+
+def post_json(url, payload):
+    """POST JSON to the team sheet's address. Apps Script answers through a redirect, which
+    urllib follows. text/plain keeps it a simple request."""
+    req = urllib.request.Request(url, json.dumps(payload).encode(), {"Content-Type": "text/plain;charset=utf-8"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        return json.loads(r.read().decode())
+
+
+def push_new(cfg, p, everything=False):
+    """Send what the sheet hasn't got yet. Never let a failure get in the way of the chat."""
+    if not cfg.get("endpoint"):
+        return
+    try:
+        _push(cfg, p, everything)
+    except Exception as e:  # offline, wrong password, Google hiccup: it all retries next time
+        print(f"(Couldn't send to the team sheet just now: {e}. It will try again next time.)")
+
+
+def _push(cfg, p, everything=False):
+    if not cfg.get("secret"):
+        raise RuntimeError("no password in the config; run setup again with --secret")
+    projects, ledger = load_projects(p), load_ledger(p)
+    state = {}
+    if not everything and os.path.exists(PUSHED_PATH):
+        try:
+            state = json.load(open(PUSHED_PATH))
+        except ValueError:
+            state = {}
+    sent = state.setdefault("rows", {})
+
+    todo = []
+    for r in ledger:
+        key = f"{r.get('user') or cfg['user']}|{r['created_at']}|{r['model']}|{r['action']}"
+        proj = project_of(r["folder"], projects)
+        if sent.get(key) == proj:
+            continue  # the sheet already has this row under this project name
+        todo.append((key, proj, {"key": key, "month": f"{local(ts(r['created_at'])):%Y-%m}",
+                                 "created_at": r["created_at"], "user": r.get("user") or cfg["user"],
+                                 "model": r["model"], "credits": r["credits"], "kind": r.get("kind") or "",
+                                 "project": proj, "folder": r["folder"]}))
+    ads = [{"month": m, "project": proj, "count": n}
+           for (m, proj), n in sorted(count_finished_ads(p, projects, ledger).items())]
+
+    def send(rows, with_ads):
+        res = post_json(cfg["endpoint"], {"secret": cfg["secret"], "user": cfg["user"],
+                                          "rows": rows, "ads": ads if with_ads else [], "snapshot": with_ads})
+        if not res.get("ok"):
+            raise RuntimeError(res.get("error", "the sheet refused it"))
+
+    for i in range(0, len(todo), PUSH_CHUNK):
+        chunk = todo[i:i + PUSH_CHUNK]
+        send([row for _, _, row in chunk], False)
+        for key, proj, _ in chunk:
+            sent[key] = proj
+        os.makedirs(os.path.dirname(PUSHED_PATH), exist_ok=True)
+        json.dump(state, open(PUSHED_PATH, "w"))
+    if todo or ads != state.get("ads"):
+        send([], True)
+        state["ads"] = ads
+        json.dump(state, open(PUSHED_PATH, "w"))
+    if todo:
+        print(f"Sent {len(todo)} line(s) to the team sheet.")
+
+
+def cmd_push(cfg, p, a):
+    if not cfg.get("endpoint"):
+        sys.exit("No team sheet address set. Run setup with --endpoint and --secret.")
+    try:  # not push_new: someone running this by hand wants to see what went wrong
+        _push(cfg, p, everything=a.all)
+    except Exception as e:
+        sys.exit(f"Couldn't send to the team sheet: {e}")
 
 
 # ---------------------------------------------------------------- projects / reports
@@ -447,6 +530,7 @@ def cmd_project(cfg, p, a):
     moved = sum(float(r["credits"]) for r in rows_for(p, user_files=True) if a.folder in r["folder"])
     print(f'"{a.folder}" is now project "{a.project}" '
           f"({moved:,.2f} credits re-labelled, past and future).")
+    push_new(cfg, p)
 
 
 def rows_for(p, user_files=False):
@@ -613,9 +697,13 @@ def find_shared_folder():
 def cmd_setup(cfg, p, a):
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     cfg["user"] = (a.user or cfg["user"]).strip().lower().split()[0]
+    if a.endpoint:
+        cfg["endpoint"] = a.endpoint.strip()
+    if a.secret:
+        cfg["secret"] = a.secret.strip()
     if a.ledger_dir:
         cfg["ledger_dir"] = os.path.expanduser(a.ledger_dir)
-    elif cfg["ledger_dir"] == DEFAULT_LEDGER_DIR:
+    elif cfg["ledger_dir"] == DEFAULT_LEDGER_DIR and not cfg.get("endpoint"):
         found = find_shared_folder()
         if len(found) == 1:
             cfg["ledger_dir"] = found[0]
@@ -627,10 +715,12 @@ def cmd_setup(cfg, p, a):
                      "Make sure the folder has been shared with you and Google Drive for desktop has\n"
                      "finished syncing, then run this again. Or pass --ledger-dir \"<path to it>\".")
     json.dump(cfg, open(CONFIG_PATH, "w"), indent=2)
+    os.chmod(CONFIG_PATH, 0o600)  # holds the team sheet's password
     p = paths(cfg)
     if not os.path.exists(p["projects"]):
         save_projects(p, [])
-    print(f"Name: {cfg['user']}\nRecords folder: {cfg['ledger_dir']}\nConfig: {CONFIG_PATH}\n")
+    print(f"Name: {cfg['user']}\nRecords folder: {cfg['ledger_dir']}\nConfig: {CONFIG_PATH}\n"
+          f"Team sheet: {'connected' if cfg.get('endpoint') else 'not connected'}\n")
     if not a.no_backfill:
         print("Reading this month's past chats...")
         cmd_backfill(cfg, p, argparse.Namespace(since=None))
@@ -646,9 +736,11 @@ def main():
     s = sub.add_parser("report")
     s.add_argument("--month"); s.add_argument("--team", action="store_true"); s.add_argument("--csv", action="store_true")
     s = sub.add_parser("setup"); s.add_argument("--user"); s.add_argument("--ledger-dir")
+    s.add_argument("--endpoint", help="the team sheet's web address"); s.add_argument("--secret", help="its password")
     s.add_argument("--no-backfill", action="store_true")
     s = sub.add_parser("backfill"); s.add_argument("--since", help="YYYY-MM-DD, default the 1st of this month")
     sub.add_parser("workbook")
+    s = sub.add_parser("push"); s.add_argument("--all", action="store_true", help="resend everything, not just what's new")
     a = ap.parse_args()
 
     cfg = load_config()
@@ -669,6 +761,8 @@ def main():
         cmd_backfill(cfg, p, a)
     elif a.cmd == "workbook":
         build_workbook(p)
+    elif a.cmd == "push":
+        cmd_push(cfg, p, a)
 
 
 if __name__ == "__main__":

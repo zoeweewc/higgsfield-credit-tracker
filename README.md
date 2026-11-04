@@ -10,37 +10,27 @@ Reeve, including every subfolder. Nobody has to label anything while they work.
 
 ## Install (once, per person)
 
-Everything comes from one shared Google Drive folder. No GitHub account, nothing to log into.
-
-**Step 1 — get the shared folder onto your Mac.** (You do this part yourself.)
-
-1. Install **Google Drive for desktop** and sign in, if it isn't already.
-2. In Google Drive in your browser: **Shared with me** → right-click **Higgsfield Credits**
-   → **Organise** → **Add shortcut to Drive** → pick **My Drive** → **Add**.
-3. Wait for Drive to finish syncing.
-
-Don't skip the shortcut. A folder sitting only in "Shared with me" never appears on your Mac,
-and the tracker won't find it.
-
-**Step 2 — install the tracker.** Run these, in order, replacing `<your first name>`:
+Open Claude Code and paste this, with your own first name, and the address and password Zoe
+sent you:
 
 ```bash
-HF=$(echo ~/Library/CloudStorage/GoogleDrive-*/My\ Drive/Higgsfield\ Credits)
-claude plugin marketplace add "$HF/Install"
+claude plugin marketplace add zoeweewc/higgsfield-credit-tracker
 claude plugin install higgsfield-credits@funnelduo-tools
 ```
 
 ```bash
-python3 "$(ls -d ~/.claude/plugins/cache/*/higgsfield-credits/*/scripts/hf_credits.py | tail -1)" setup --user <your first name>
+python3 "$(ls -d ~/.claude/plugins/cache/*/higgsfield-credits/*/scripts/hf_credits.py | tail -1)" setup --user <first name> --endpoint <address> --secret <password>
 ```
 
-That last line also reads your own past chats from the start of this month, so the credits you have
-already spent are in there from day one.
+```bash
+python3 "$(ls -d ~/.claude/plugins/cache/*/higgsfield-credits/*/scripts/hf_credits.py | tail -1)" backfill --since 2026-10-01
+```
 
-Restart Claude Code. That's the whole setup.
+Restart Claude Code. That's the whole setup. No Google Drive, no GitHub account, nothing to log
+into. The last line reads your own past chats back to the date you give it, so the credits you
+have already spent are counted from day one.
 
-If it says it can't find the shared folder, step 1 isn't done or Drive hasn't finished syncing.
-Wait for it, then run the line again.
+The address and password are private. They are never in this repository.
 
 ---
 
@@ -49,48 +39,47 @@ Wait for it, then run the line again.
 **While you work:** nothing. Keep making videos as usual.
 
 **When you finish a chat:** if that chat made any Higgsfield videos or images, Claude prices
-them before the chat can end, and tells you one line like
-`This run: 144 credits — Reeve`.
+them before the chat can end, and tells you one line like `This run: 144 credits — Reeve`.
 
-**If you worked in a folder nobody has claimed yet,** Claude asks once: *"What project is this
+**If you worked in a folder that has no project yet,** Claude asks once: *"What project is this
 folder for?"* Answer in your own words — `Rawson`, `Nike launch`, anything. It's remembered for
-that folder forever, and applied to everything already recorded from it.
+that folder, and applied to everything already recorded from it.
 
 **Any time you want to know your own spend:** ask Claude *"how much have I spent this month?"*
 
----
-
-## Monthly routine
-
-**Each person**, at month end: open your `ledger-<name>.csv` from the shared folder in Excel or
-Google Sheets and look down the Project column. If two folders should be the same project, tell
-Claude: *"the folders X and Y are both the Rawson project"*. It re-labels everything from those
-folders, past included.
-
-**Nobody needs to update a spreadsheet.** `Higgsfield Credits.xlsx` in the shared folder rebuilds
-itself every time anyone's chat ends, with a tab per person and a summary of every month.
-
-**The manager**, once everyone has done that: ask Claude for the team report. It reads every
-`ledger-*.csv` in the shared folder and produces the month by project and by person, plus a `summary-YYYY-MM.csv` ready for the team Google Sheet.
+Your own records stay on your Mac, in `~/Higgsfield Credits`. Each new line is also sent to the
+team sheet. If you're offline, or the sheet is down, nothing breaks: it sends again next time.
 
 ---
 
-## What's in the shared folder
+## The team sheet (for whoever runs the team)
 
-`My Drive / Zoe Claude / Higgsfield Credits`
+One Google Sheet, filled in automatically. Nobody else needs access to it.
 
-| File | What it is |
+| Tab | What it is |
 |---|---|
-| `ledger-<name>.csv` | One person's charges: date, model, credits, action, folder, chat, person |
-| `projects.csv` | Folder → project, shared by everyone, so names stay consistent |
-| `calls/` | Raw log of each generation, used to match a charge to its project. Cleans itself up after 60 days. Leave it alone. |
-| `Higgsfield Credits.xlsx` | **The one spreadsheet** — rebuilt automatically after every chat. Tabs: Summary (credits, clips made, and finished ads delivered), By project, and one per person. Open it straight from Drive. |
-| `engine/` | The tracker's actual code. This is what everyone runs. Leave it alone. |
-| `Install/` | The small launcher that points at `engine/`, for installing it. Leave it alone. |
-| `summary-YYYY-MM.csv` | Optional flat export, if you want one |
+| **Summary** | Each month, by project: credits, clips made, images made, finished ads |
+| **By person** | Each month, by person |
+| **Month totals** | One line per month |
+| **Project names** | Everyone's project names, each with an empty box. Type your own team name for a project and every total uses it. This is how `Reeve` and `Reeve Ads` from two people become one project. |
+| **Ledger**, **Finished ads** | The raw lines the totals are built from. Leave these alone. |
 
-The ledger stores the **folder**, never the project name. That's why renaming a project instantly
-re-labels every past charge.
+**Credits** menu → **Refresh summary** rebuilds the totals after you edit *Project names*. It also
+rebuilds by itself whenever anyone's tracker sends something.
+
+### Setting up the sheet (once)
+
+1. Make a new Google Sheet.
+2. **Extensions → Apps Script.** Delete what's there and paste in `apps-script/Code.gs` from this
+   repository. Change `REPLACE-ME` at the top to a password of your own. Everyone's tracker
+   sends this along; keep it private.
+3. **Deploy → New deployment → Web app.** *Execute as:* **Me**. *Who has access:* **Anyone**.
+   Click **Deploy** and approve the permissions it asks for.
+4. Copy the **Web app URL**. That, plus your password, is what you send each person as the
+   `<address>` and `<password>` above.
+
+"Anyone" only means anyone who has the address and the password can send a line. They cannot
+read or change the sheet.
 
 ---
 
@@ -108,30 +97,8 @@ the two is what reruns and takes cost you.
 
 ## Updating it later
 
-**Almost nothing to do.** The tracker's code lives in `engine/` in the shared Drive folder, and
-that is what everyone actually runs. Fix something there and the next generation anyone makes uses
-the fixed version — no commands, no restart, no message to the team.
-
-Each person's Mac holds only a small launcher that points at `engine/`, plus a spare copy of the
-code for when Drive is unreachable. The launcher is the only part a plugin update can change, and
-it is deliberately tiny, so it should almost never need one.
-
-What does and doesn't need an update:
-
-| Change | Needs an update? |
-|---|---|
-| Anything in `engine/` — how spend is counted, reports, the spreadsheet | No |
-| Project names (`projects.csv`) | No |
-| How the hooks are wired (`hooks.json`), or what the skill tells Claude (`SKILL.md`) | Yes |
-
-Either way, push changes to the shared folder with `./publish.sh`. Never copy files in by hand:
-overwriting a file inside a Drive folder can silently never upload, leaving the whole team on the
-old code with no error anywhere. `publish.sh` deletes before it writes, compares every file
-afterwards, and refuses to report success until Drive confirms it has taken each one. `./publish.sh
---check` verifies without changing anything.
-
-When the launcher or the skill changes, also bump the version in `plugin.json`, then have each
-person run:
+Plugin updates are not automatic. When the tracker changes, the version number in
+`plugins/higgsfield-credits/.claude-plugin/plugin.json` is raised, and each person runs:
 
 ```bash
 claude plugin marketplace update funnelduo-tools
@@ -141,11 +108,11 @@ claude plugin marketplace update funnelduo-tools
 claude plugin update higgsfield-credits@funnelduo-tools
 ```
 
-then restart Claude Code. **The version has to change or the update does nothing** — it reports
+then restarts Claude Code. **The version has to change or the update does nothing** — it reports
 "already at the latest version" and keeps the old files.
 
-Everyone with edit access to the shared folder can change code that runs on the whole team's Macs.
-That is the trade for updates being free; keep the folder shared with the team only.
+Changing the sheet's script (`apps-script/Code.gs`) needs no update on anyone's Mac: paste it into
+the sheet's Apps Script and deploy a new version.
 
 ---
 
@@ -158,4 +125,3 @@ That is the trade for updates being free; keep the folder shared with the team o
   the same second, a charge can land on the wrong ledger; the team total stays correct.
 - Credits are only readable inside a Claude chat, which is why pricing happens at the end of a
   chat rather than silently in the background.
-

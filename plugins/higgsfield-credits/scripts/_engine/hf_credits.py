@@ -320,6 +320,13 @@ def push_new(cfg, p, everything=False):
         print(f"(Couldn't send to the team sheet just now: {e}. It will try again next time.)")
 
 
+def detail_from():
+    """The sheet keeps every charge only for this month and last; older months go up as totals."""
+    cur = local(now())
+    y, m = (cur.year, cur.month - 1) if cur.month > 1 else (cur.year - 1, 12)
+    return f"{y}-{m:02d}"
+
+
 def _push(cfg, p, everything=False):
     if not cfg.get("secret"):
         raise RuntimeError("no password in the config; run setup again with --secret")
@@ -332,13 +339,23 @@ def _push(cfg, p, everything=False):
             state = {}
     sent = state.setdefault("rows", {})
 
-    todo = []
+    cutoff = detail_from()
+    todo, history = [], defaultdict(lambda: [0.0, 0, 0])
     for r in ledger:
-        key = f"{r.get('user') or cfg['user']}|{r['created_at']}|{r['model']}|{r['action']}"
+        month = f"{local(ts(r['created_at'])):%Y-%m}"
         proj = project_of(r["folder"], projects)
+        if month < cutoff:
+            h = history[(month, proj)]
+            h[0] += float(r["credits"])
+            if r.get("action") == "spend":
+                kind = r.get("kind") or kind_of("", r["model"])
+                h[1] += kind == "video"
+                h[2] += kind == "image"
+            continue
+        key = f"{r.get('user') or cfg['user']}|{r['created_at']}|{r['model']}|{r['action']}"
         if sent.get(key) == proj:
             continue  # the sheet already has this row under this project name
-        todo.append((key, proj, {"key": key, "month": f"{local(ts(r['created_at'])):%Y-%m}",
+        todo.append((key, proj, {"key": key, "month": month,
                                  "created_at": r["created_at"], "user": r.get("user") or cfg["user"],
                                  "model": r["model"], "credits": r["credits"],
                                  "kind": r.get("kind") or kind_of("", r["model"]),  # older rows were saved without one
@@ -346,9 +363,13 @@ def _push(cfg, p, everything=False):
     ads = [{"month": m, "project": proj, "count": n}
            for (m, proj), n in sorted(count_finished_ads(p, projects, only_user=cfg["user"]).items())]
 
+    hist = [{"month": m, "project": proj, "credits": round(c, 2), "clips": v, "images": i}
+            for (m, proj), (c, v, i) in sorted(history.items())]
+
     def send(rows, with_ads):
         res = post_json(cfg["endpoint"], {"secret": cfg["secret"], "user": cfg["user"],
-                                          "rows": rows, "ads": ads if with_ads else [], "snapshot": with_ads})
+                                          "rows": rows, "ads": ads if with_ads else [], "snapshot": with_ads,
+                                          "history": hist if with_ads else None, "cutoff": cutoff})
         if not res.get("ok"):
             raise RuntimeError(res.get("error", "the sheet refused it"))
 
@@ -359,9 +380,9 @@ def _push(cfg, p, everything=False):
             sent[key] = proj
         os.makedirs(os.path.dirname(PUSHED_PATH), exist_ok=True)
         json.dump(state, open(PUSHED_PATH, "w"))
-    if todo or ads != state.get("ads"):
+    if todo or ads != state.get("ads") or hist != state.get("history") or cutoff != state.get("cutoff"):
         send([], True)
-        state["ads"] = ads
+        state["ads"], state["history"], state["cutoff"] = ads, hist, cutoff
         json.dump(state, open(PUSHED_PATH, "w"))
     if todo:
         print(f"Sent {len(todo)} line(s) to the team sheet.")

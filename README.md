@@ -48,7 +48,8 @@ that folder, and applied to everything already recorded from it.
 **Any time you want to know your own spend:** ask Claude *"how much have I spent this month?"*
 
 Your own records stay on your Mac, in `~/Higgsfield Credits`. Each new line is also sent to the
-team sheet. If you're offline, or the sheet is down, nothing breaks: it sends again next time.
+team sheet, which keeps the full detail for this month and last and only the monthly totals for
+older months. Your own list is the backup if the sheet is ever lost. If you're offline, or the sheet is down, nothing breaks: it sends again next time.
 
 ---
 
@@ -62,7 +63,7 @@ One Google Sheet, filled in automatically. Nobody else needs access to it.
 | **By person** | Each month, by person |
 | **Month totals** | One line per month |
 | **Project names** | Everyone's project names, each with an empty box. Type your own team name for a project and every total uses it. This is how `Reeve` and `Reeve Ads` from two people become one project. |
-| **Ledger**, **Finished ads** | The raw lines the totals are built from. Leave these alone. |
+| **Ledger**, **History**, **Finished ads** | What the totals are built from. Leave these alone. The Ledger holds every charge for this month and last month. Older months are squeezed into **History**, one short line per person and project, so the sheet never grows without limit. The totals do not change when this happens. |
 
 **Credits** menu → **Refresh summary** rebuilds the totals after you edit *Project names*. It also
 rebuilds by itself whenever anyone's tracker sends something.
@@ -115,7 +116,9 @@ then restarts Claude Code. **The version has to change or the update does nothin
 "already at the latest version" and keeps the old files.
 
 Changing the sheet's script (`apps-script/Code.gs`) needs no update on anyone's Mac: paste it into
-the sheet's Apps Script and deploy a new version.
+the sheet's Apps Script, save, then **Deploy → Manage deployments**, click the pencil, choose
+**New version** and **Deploy**. The address stays the same. Saving alone is not enough: the address
+keeps running the old version until a new one is deployed.
 
 ---
 

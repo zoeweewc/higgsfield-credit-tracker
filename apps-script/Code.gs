@@ -5,10 +5,11 @@
 const SECRET = 'REPLACE-ME';
 
 const SEP = '\u0001'; // joins parts of an internal key; cannot appear in a project name
-const LEDGER = 'Ledger', ADS = 'Finished ads', NAMES = 'Project names';
-const TEXT_COLS = { 'Ledger': 3, 'Finished ads': 2, 'Project names': 3 };
+const LEDGER = 'Ledger', ADS = 'Finished ads', NAMES = 'Project names', HISTORY = 'History';
+const TEXT_COLS = { 'Ledger': 3, 'Finished ads': 2, 'Project names': 3, 'History': 3 };
 const LEDGER_HEAD = ['Key', 'Month', 'Date', 'Person', 'Model', 'Credits', 'Kind', 'Their project', 'Folder'];
 const ADS_HEAD = ['Key', 'Month', 'Person', 'Their project', 'Finished ads'];
+const HISTORY_HEAD = ['Key', 'Month', 'Person', 'Their project', 'Credits', 'Clips made', 'Images made'];
 const NAMES_HEAD = ['Person', 'Their project name', 'Team project name (type yours here)'];
 
 function doPost(e) {
@@ -23,7 +24,16 @@ function doPost(e) {
       [r.key, r.month, r.created_at, r.user, r.model, Number(r.credits), r.kind, r.project, r.folder]), 7);
     // finished ads arrive as a person's complete current counts, so they replace that person's
     // old lines; otherwise a renamed project would be counted under both its names
-    if (body.snapshot) replaceAds(sheetOf(ss, ADS, ADS_HEAD), body.user, ads);
+    if (body.snapshot) {
+      replaceAds(sheetOf(ss, ADS, ADS_HEAD), body.user, ads);
+      // Months before `cutoff` are kept as one small line per project instead of one per charge, so
+      // the sheet never grows without limit. The person's own totals for those months arrive here
+      // in full, so their detailed lines for those months can go.
+      if (body.history && body.cutoff) {
+        replaceHistory(sheetOf(ss, HISTORY, HISTORY_HEAD), body.user, body.history);
+        pruneLedger(sheetOf(ss, LEDGER, LEDGER_HEAD), body.user, body.cutoff);
+      }
+    }
     refresh(ss);
     return reply({ ok: true, rows: rows.length, ads: ads.length });
   } catch (err) {
@@ -40,6 +50,28 @@ function replaceAds(sh, user, ads) {
   sh.clear();
   sh.getRange(1, 1, sh.getMaxRows(), 2).setNumberFormat('@');
   sh.getRange(1, 1, grid.length, ADS_HEAD.length).setValues(grid);
+  sh.setFrozenRows(1);
+}
+
+function replaceHistory(sh, user, hist) {
+  const keep = body(sh).filter(r => r[2] !== user);
+  const mine = hist.map(h => [user + '|' + h.month + '|' + h.project, h.month, user, h.project,
+                              Number(h.credits), Number(h.clips), Number(h.images)]);
+  const grid = [HISTORY_HEAD].concat(keep, mine);
+  sh.clear();
+  sh.getRange(1, 1, sh.getMaxRows(), 3).setNumberFormat('@');
+  sh.getRange(1, 1, grid.length, HISTORY_HEAD.length).setValues(grid);
+  sh.setFrozenRows(1);
+}
+
+function pruneLedger(sh, user, cutoff) {
+  const all = body(sh);
+  const keep = all.filter(r => !(r[3] === user && String(r[1]) < cutoff));
+  if (keep.length === all.length) return;
+  const grid = [LEDGER_HEAD].concat(keep);
+  sh.clear();
+  sh.getRange(1, 1, sh.getMaxRows(), 3).setNumberFormat('@');
+  sh.getRange(1, 1, grid.length, LEDGER_HEAD.length).setValues(grid);
   sh.setFrozenRows(1);
 }
 
@@ -83,9 +115,11 @@ function upsert(sh, rows, valueFrom) {
   if (fresh.length) sh.getRange(sh.getLastRow() + 1, 1, fresh.length, width).setValues(fresh);
 }
 
-// Rebuild the read-only tabs from the Ledger, Finished ads and Project names tabs.
+// Rebuild the read-only tabs from the Ledger (recent charges), History (older months, already
+// added up), Finished ads and Project names tabs.
 function refresh(ss) {
   const ledger = body(sheetOf(ss, LEDGER, LEDGER_HEAD)), ads = body(sheetOf(ss, ADS, ADS_HEAD));
+  const history = body(sheetOf(ss, HISTORY, HISTORY_HEAD));
   const namesSheet = sheetOf(ss, NAMES, NAMES_HEAD);
 
   // every (person, their project) pair gets a line in Project names, left blank for you to fill in
@@ -94,6 +128,7 @@ function refresh(ss) {
   const pairs = new Set();
   ledger.forEach(r => pairs.add(r[3] + SEP + r[7]));
   ads.forEach(r => pairs.add(r[2] + SEP + r[3]));
+  history.forEach(r => pairs.add(r[2] + SEP + r[3]));
   const added = [...pairs].filter(k => !names.has(k)).sort().map(k => k.split(SEP).concat(['']));
   if (added.length) namesSheet.getRange(namesSheet.getLastRow() + 1, 1, added.length, 3).setValues(added);
   added.forEach(a => names.set(a[0] + SEP + a[1], ''));
@@ -106,6 +141,11 @@ function refresh(ss) {
     const add = t => { t[0] += credits; if (clip) t[1]++; if (image) t[2]++; };
     bump(byProject, r[1] + SEP + team(r[3], r[7]), add);
     bump(byPerson, r[1] + SEP + r[3], add);
+  });
+  history.forEach(r => {
+    const add = t => { t[0] += Number(r[4]); t[1] += Number(r[5]); t[2] += Number(r[6]); };
+    bump(byProject, r[1] + SEP + team(r[2], r[3]), add);
+    bump(byPerson, r[1] + SEP + r[2], add);
   });
   ads.forEach(r => {
     const n = Number(r[4]);

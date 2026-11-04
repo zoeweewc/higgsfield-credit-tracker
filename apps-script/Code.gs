@@ -6,6 +6,7 @@ const SECRET = 'REPLACE-ME';
 
 const SEP = '\u0001'; // joins parts of an internal key; cannot appear in a project name
 const LEDGER = 'Ledger', ADS = 'Finished ads', NAMES = 'Project names';
+const TEXT_COLS = { 'Ledger': 3, 'Finished ads': 2, 'Project names': 3 };
 const LEDGER_HEAD = ['Key', 'Month', 'Date', 'Person', 'Model', 'Credits', 'Kind', 'Their project', 'Folder'];
 const ADS_HEAD = ['Key', 'Month', 'Person', 'Their project', 'Finished ads'];
 const NAMES_HEAD = ['Person', 'Their project name', 'Team project name (type yours here)'];
@@ -37,6 +38,7 @@ function replaceAds(sh, user, ads) {
   const mine = ads.map(a => [user + '|' + a.month + '|' + a.project, a.month, user, a.project, Number(a.count)]);
   const grid = [ADS_HEAD].concat(keep, mine);
   sh.clear();
+  sh.getRange(1, 1, sh.getMaxRows(), 2).setNumberFormat('@');
   sh.getRange(1, 1, grid.length, ADS_HEAD.length).setValues(grid);
   sh.setFrozenRows(1);
 }
@@ -50,10 +52,13 @@ function reply(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
+// Sheets turns text like "2026-10" into a date and reads it back as one, which would break every
+// month total. So the leading text columns are formatted as plain text before anything is written.
 function sheetOf(ss, name, head) {
   let sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
+    sh.getRange(1, 1, sh.getMaxRows(), TEXT_COLS[name]).setNumberFormat('@');
     sh.getRange(1, 1, 1, head.length).setValues([head]);
     sh.setFrozenRows(1);
   }
@@ -133,6 +138,7 @@ function body(sh) {
 function write(ss, name, grid) {
   let sh = ss.getSheetByName(name) || ss.insertSheet(name);
   sh.clear();
+  sh.getRange(1, 1, sh.getMaxRows(), 1).setNumberFormat('@'); // the Month column
   sh.getRange(1, 1, grid.length, grid[0].length).setValues(grid);
   sh.setFrozenRows(1);
 }

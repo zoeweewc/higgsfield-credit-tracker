@@ -71,9 +71,13 @@ set of GenAI images, a test or a reference, are not tracked per item: they stay 
   command is what tells it which video each clip is for. Other chats in the same folder don't affect yours.
 - **Continuing a video in a new chat:** run `ad-start --name "<same name>"` (no style needed) and the
   cost carries on from where it was.
-- If a hook says *no ad is open*, and the generation is for a video that will be combined into a final
-  cut, ask for the name and style and run `ad-start`. If it is a test, a reference image or standalone
-  images, ignore it.
+- **Every video generation is logged automatically.** If a chat makes a video clip and no video is
+  open, the tracker opens one itself under a placeholder name like `Untitled - Zoe GenAI - 05 Nov 11:35`
+  and a hook tells you so. When that happens, ask the user what the video is called and which style it
+  is (unless you already know both), then run:
+  `python3 <script> ad-name --from "<the Untitled name>" --name "<real name>" --style "<style>"`.
+  If the real name is one that already exists, the two merge into one video and their costs add up.
+  Image generation alone never opens a video.
 
 **Finish it** when the final video exists:
 

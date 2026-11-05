@@ -107,8 +107,11 @@ backwards.
 BOMB, when you say it has been **posted**. For other projects Claude uses its judgement and asks if
 unsure. To undo one, tell Claude *"that wasn't a finished video"*.
 
-Images or clips that never become a finished video, such as a set of GenAI images, are not tracked
-per item. They still count to the project's total in the **Summary** tab.
+**Every video that is generated is logged, even if nobody remembered to open it.** The first video
+clip in a chat opens a video by itself under a placeholder name like `Untitled - Zoe GenAI - 05 Nov
+11:35`, and Claude asks you what it is called and which style it is, then renames it. Images on their
+own, such as a set of GenAI images, never open a video. They count to the project's total in the
+**Summary** tab.
 
 Each chat has its own current video, so several chats can work in the same folder on different
 videos without mixing them up. Chats that were already open when this was added fall back to the

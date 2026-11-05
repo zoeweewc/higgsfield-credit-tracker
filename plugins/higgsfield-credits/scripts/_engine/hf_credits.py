@@ -19,7 +19,7 @@ Files live in the ledger directory (config: ~/.higgsfield-credits/config.json):
 If `endpoint` and `secret` are in the config, every new charge is also sent to the team's
 Google Sheet (see apps-script/Code.gs), so nobody needs access to the team's Drive.
 """
-import argparse, csv, json, os, re, sys, time, urllib.request
+import argparse, csv, glob, json, os, re, sys, time, urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -201,20 +201,24 @@ def cmd_hook_post(cfg, p):
         ad = mine.get("name") or None  # a chat that has used per-chat tracking never borrows the folder's ad
     else:
         ad = state["folders"].get(os.path.realpath(rec["folder"])) if rec["folder"] else None
+    auto = False
+    if not ad and kind_of(rec["tool"], "") == "video" and rec["folder"]:
+        # a video is being made and nothing is open for it: every video must be logged, so open one now
+        # under a placeholder name. Claude is asked below to give it its real name and style.
+        ad, auto = auto_open(cfg, p, state, rec), True
     if ad:
         rec["ad"] = ad
     with open(call_file(p, rec["session_id"]), "a") as f:
         f.write(json.dumps(rec) + "\n")
-    if not ad and rec["session_id"] not in state["reminded"]:  # once per chat, never on every clip
-        state["reminded"][rec["session_id"]] = now().isoformat(timespec="seconds")
+    script = os.path.abspath(__file__)
+    if auto:
         save_active(state)
-        script = os.path.abspath(__file__)
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": (
-            "No ad is open in this folder, so this generation's credits are not tied to any ad. If it is for an "
-            "ad, ask the user for the ad's name (the client's name for it, if there is one) and its style "
-            "(Animated, AI UGC, Cinematic or Hypermotion), then run: "
-            f"python3 \"{script}\" ad-start --name \"<name>\" --style \"<style>\". "
-            "If it is not for an ad (a test, a reference image), ignore this.")}}))
+            f'A video is being made, so it has been logged as "{ad}". Ask the user what this video is called '
+            "(the client's name for it, if there is one) and which style it is (Animated, AI UGC, Cinematic or "
+            "Hypermotion), unless you already know both, then run: "
+            f'python3 "{script}" ad-name --from "{ad}" --name "<name>" --style "<style>". '
+            "If the user is only testing, you can leave it.")}}))
 
 
 def cmd_hook_stop(cfg, p):
@@ -628,6 +632,74 @@ def ads_payload(p, projects, user):
                     "credits": round(ad["credits"], 2), "clips": ad["clips"], "images": ad["images"],
                     "status": "Finished" if done else "In progress"})
     return out
+
+
+def auto_open(cfg, p, state, rec):
+    """Open a placeholder video for a chat that started making one without opening it."""
+    folder = rec["folder"]
+    stamp = f"{local(now()):%d %b %H:%M}"
+    name = f"Untitled - {os.path.basename(folder.rstrip('/')).strip() or 'video'} - {stamp}"
+    rows = load_ads(p, cfg["user"])
+    n, base = 2, name
+    while find_ad(rows, folder, name):
+        name, n = f"{base} ({n})", n + 1
+    rows.append({"name": name, "folder": folder, "style": "", "started_at": now().isoformat(timespec="seconds"),
+                 "finished_at": "", "credits": 0.0, "clips": 0, "images": 0, "user": cfg["user"]})
+    save_ads(p, cfg["user"], rows)
+    state["sessions"][rec["session_id"]] = {"name": name, "at": now().isoformat(timespec="seconds")}
+    return name
+
+
+def cmd_ad_name(cfg, p, a):
+    """Give a placeholder video its real name and style. If that name already exists, they merge."""
+    rows = load_ads(p, cfg["user"])
+    old = next((r for r in rows if r["name"].strip().lower() == a.old.strip().lower()), None)
+    if old is None:
+        sys.exit(f'No video called "{a.old}".')
+    style = style_of(a.style) if a.style else None
+    if a.style and not style:
+        sys.exit(f"The style must be one of: {', '.join(STYLES)}.")
+    old_name, new = old["name"].strip().lower(), a.name.strip()
+    twin = next((r for r in rows if r is not old and r["name"].strip().lower() == new.lower()
+                 and same_folder(r["folder"], old["folder"])), None)
+    if twin:  # the same content, made in another chat: one video, costs added up
+        twin["credits"] += old["credits"]
+        twin["clips"] += old["clips"]
+        twin["images"] += old["images"]
+        if style:
+            twin["style"] = style
+        rows.remove(old)
+        target = twin
+    else:
+        old["name"] = new
+        if style:
+            old["style"] = style
+        target = old
+    save_ads(p, cfg["user"], rows)
+    # chats and not-yet-priced clips still carry the old name; point them at the new one
+    state = load_active()
+    for ptr in state["sessions"].values():
+        if ptr.get("name", "").lower() == old_name:
+            ptr["name"] = target["name"]
+    for k, v in list(state["folders"].items()):
+        if v.lower() == old_name:
+            state["folders"][k] = target["name"]
+    save_active(state)
+    for fn in glob.glob(os.path.join(p["calls"], "*.jsonl")):
+        lines, changed = [], False
+        for line in open(fn):
+            try:
+                c = json.loads(line)
+            except ValueError:
+                lines.append(line.rstrip("\n")); continue
+            if c.get("ad", "").lower() == old_name and c.get("user") == cfg["user"]:
+                c["ad"], changed = target["name"], True
+            lines.append(json.dumps(c))
+        if changed:
+            open(fn, "w").write("\n".join(lines) + "\n")
+    print(f'Video is now "{target["name"]}" - {target["style"] or "no style yet"}'
+          f'{" (merged with the video already called that)" if twin else ""}.')
+    push_new(cfg, p)
 
 
 def cmd_ad_start(cfg, p, a):
@@ -1045,6 +1117,8 @@ def main():
     s = sub.add_parser("push"); s.add_argument("--all", action="store_true", help="resend everything, not just what's new")
     s = sub.add_parser("ad-start", help="open an ad: from now on its credits are counted")
     s.add_argument("--name", required=True); s.add_argument("--style"); s.add_argument("--folder", help="default: the folder you are in")
+    s = sub.add_parser("ad-name", help="give an automatically logged video its real name and style")
+    s.add_argument("--from", dest="old", required=True); s.add_argument("--name", required=True); s.add_argument("--style")
     s = sub.add_parser("finished", help="count one finished ad"); s.add_argument("--name", required=True)
     s.add_argument("--style"); s.add_argument("--folder", help="default: the folder you are in"); s.add_argument("--remove", action="store_true")
     s = sub.add_parser("ads", help="cost per ad and per style"); s.add_argument("--month")
@@ -1072,6 +1146,8 @@ def main():
         cmd_push(cfg, p, a)
     elif a.cmd == "ad-start":
         cmd_ad_start(cfg, p, a)
+    elif a.cmd == "ad-name":
+        cmd_ad_name(cfg, p, a)
     elif a.cmd == "finished":
         cmd_finished(cfg, p, a)
     elif a.cmd == "ads":

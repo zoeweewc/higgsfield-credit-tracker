@@ -107,11 +107,13 @@ backwards.
 BOMB, when you say it has been **posted**. For other projects Claude uses its judgement and asks if
 unsure. To undo one, tell Claude *"that wasn't a finished video"*.
 
-**Every video that is generated is logged, even if nobody remembered to open it.** The first video
-clip in a chat opens a video by itself under a placeholder name like `Untitled - Zoe GenAI - 05 Nov
-11:35`, and Claude asks you what it is called and which style it is, then renames it. Images on their
-own, such as a set of GenAI images, never open a video. They count to the project's total in the
-**Summary** tab.
+**Every chat that makes a video is one row, and the whole chat counts to it.** The first video clip in
+a chat opens a video by itself, and everything that chat makes, images and clips, including what it
+made before that first clip, adds to its cost. Claude gives it a real name and a style by itself, from
+the work in the chat. A chat that only makes images, such as a set of GenAI pictures, never opens a
+video; those images count to the project's total in the **Summary** tab. When several chats build the
+same piece of content (IG BOMB's clay, stickman and motion graphic builders), they share one name, so
+they merge into one row and their costs add up.
 
 Each chat has its own current video, so several chats can work in the same folder on different
 videos without mixing them up. Chats that were already open when this was added fall back to the

@@ -214,11 +214,12 @@ def cmd_hook_post(cfg, p):
     if auto:
         save_active(state)
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": (
-            f'A video is being made, so it has been logged as "{ad}". Ask the user what this video is called '
-            "(the client's name for it, if there is one) and which style it is (Animated, AI UGC, Cinematic or "
-            "Hypermotion), unless you already know both, then run: "
+            f'A video is being made, so everything this chat makes is being logged as one video, "{ad}". '
+            "Decide its real name and style yourself from the work in this chat; do not ask the user. Name: what "
+            "the content is about, or the name the user or client gave it (for IG BOMB, the reel's name). "
+            "Style: the closest of Animated, AI UGC, Cinematic or Hypermotion. Then run: "
             f'python3 "{script}" ad-name --from "{ad}" --name "<name>" --style "<style>". '
-            "If the user is only testing, you can leave it.")}}))
+            "If another chat is building the same piece of content, use the same name and they will merge.")}}))
 
 
 def cmd_hook_stop(cfg, p):
@@ -634,6 +635,35 @@ def ads_payload(p, projects, user):
     return out
 
 
+def claim_session(cfg, p, session_id, ad):
+    """Make everything this chat has already generated count to `ad`: its logged clips, and any charge
+    already priced. (Charges priced later follow the tagged clips, so only the priced ones need adding.)"""
+    fn = call_file(p, session_id)
+    if os.path.exists(fn):
+        lines = []
+        for line in open(fn):
+            try:
+                c = json.loads(line)
+            except ValueError:
+                lines.append(line.rstrip("\n")); continue
+            if c.get("user") == cfg["user"] and not c.get("ad"):
+                c["ad"] = ad["name"]
+            lines.append(json.dumps(c))
+        open(fn, "w").write("\n".join(lines) + "\n")
+    ledger, added = load_ledger(p), 0
+    for r in ledger:
+        if r.get("session_id") == session_id and not r.get("ad") and (r.get("user") or cfg["user"]) == cfg["user"]:
+            r["ad"] = ad["name"]
+            ad["credits"] += float(r["credits"])
+            if r["action"] == "spend":
+                kind = r.get("kind") or kind_of("", r["model"])
+                ad["clips"] += kind == "video"
+                ad["images"] += kind == "image"
+            added += 1
+    if added:
+        write_ledger(p, ledger)
+
+
 def auto_open(cfg, p, state, rec):
     """Open a placeholder video for a chat that started making one without opening it."""
     folder = rec["folder"]
@@ -643,8 +673,10 @@ def auto_open(cfg, p, state, rec):
     n, base = 2, name
     while find_ad(rows, folder, name):
         name, n = f"{base} ({n})", n + 1
-    rows.append({"name": name, "folder": folder, "style": "", "started_at": now().isoformat(timespec="seconds"),
-                 "finished_at": "", "credits": 0.0, "clips": 0, "images": 0, "user": cfg["user"]})
+    ad = {"name": name, "folder": folder, "style": "", "started_at": now().isoformat(timespec="seconds"),
+          "finished_at": "", "credits": 0.0, "clips": 0, "images": 0, "user": cfg["user"]}
+    rows.append(ad)
+    claim_session(cfg, p, rec["session_id"], ad)  # the images made before this first clip are part of the video
     save_ads(p, cfg["user"], rows)
     state["sessions"][rec["session_id"]] = {"name": name, "at": now().isoformat(timespec="seconds")}
     return name

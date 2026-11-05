@@ -55,9 +55,9 @@ set of GenAI images, a test or a reference, are not tracked per item: they stay 
 
 `python3 <script> ad-start --name "<video name>" --style "<style>"`
 
-- **Name:** whatever the user or the client calls the video. Don't invent one. If you don't know it, ask.
+- **Name:** whatever the user or the client calls the video, otherwise what the content is about.
 - **Style:** one of **Animated, AI UGC, Cinematic, Hypermotion**. Pick the closest from what is being
-  made. If you are not sure, ask the user in one line. Never leave it blank.
+  made. Decide it yourself. Never leave it blank.
 - **Project** comes from the folder. Don't ask for it.
 - **One video is one piece of content.** Every style version and every language version of the same
   content is the same video, so use the same name for all of them and their costs add up. For example a
@@ -71,13 +71,17 @@ set of GenAI images, a test or a reference, are not tracked per item: they stay 
   command is what tells it which video each clip is for. Other chats in the same folder don't affect yours.
 - **Continuing a video in a new chat:** run `ad-start --name "<same name>"` (no style needed) and the
   cost carries on from where it was.
-- **Every video generation is logged automatically.** If a chat makes a video clip and no video is
-  open, the tracker opens one itself under a placeholder name like `Untitled - Zoe GenAI - 05 Nov 11:35`
-  and a hook tells you so. When that happens, ask the user what the video is called and which style it
-  is (unless you already know both), then run:
+- **Every chat that makes a video is logged automatically as one video, and everything that chat
+  generates, images and clips, counts to it, including what it made before its first video clip.** The
+  tracker opens it itself under a placeholder name like `Untitled - Zoe GenAI - 05 Nov 11:35` and a hook
+  tells you so. **Decide the real name and style yourself, from the work in this chat, and don't ask the
+  user.** Name it after what the content is about, or the name the user or client gave it (for IG BOMB,
+  the reel's name). Style is the closest of Animated, AI UGC, Cinematic or Hypermotion. Then run:
   `python3 <script> ad-name --from "<the Untitled name>" --name "<real name>" --style "<style>"`.
-  If the real name is one that already exists, the two merge into one video and their costs add up.
-  Image generation alone never opens a video.
+  If the name is one that already exists, for example another chat building the same reel, the two
+  merge into one video and their costs add up. A chat that only makes images never opens a video.
+- Starting the video yourself with `ad-start` before the first clip is still fine, and is the way to
+  switch to a different video within one chat.
 
 **Finish it** when the final video exists:
 
